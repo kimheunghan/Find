@@ -1,6 +1,6 @@
-# Find
+# FindInside
 
-Find는 Windows PC의 로컬 파일, 이메일, 이메일 첨부파일, 저장된 메일 파일과 음성 녹음을 한곳에서 찾는 **Local-First 통합 검색·수집 프로그램**입니다.
+FindInside는 Windows PC의 로컬 파일, 이메일, 이메일 첨부파일, 저장된 메일 파일과 음성 녹음을 한곳에서 찾는 **Local-First 통합 검색·수집 프로그램**입니다.
 
 파일명을 정확히 몰라도 문서와 메일의 내부 내용, 경로, 메타데이터와 의미적 유사성을 이용해 필요한 자료를 찾는 것이 목표입니다. Everything을 대체하기보다, 파일명·경로 검색을 넘어 내용 기반 탐색이 필요할 때 함께 사용하는 제품을 지향합니다.
 
@@ -23,7 +23,7 @@ Find는 Windows PC의 로컬 파일, 이메일, 이메일 첨부파일, 저장�
 - 음성: M4A 음성 인식(STT)
 - 플랫폼: Windows 설치형 앱 (`Find_Setup.exe`)
 
-Android와 iOS 앱은 후속 단계에서 Windows Find의 검색 엔진과 연동하는 방식으로 제공합니다.
+Windows PC 앱이 색인과 검색 엔진의 중심이고, Android/iOS 앱은 PC와 연결해 검색 결과 확인·검수·수집을 담당합니다.
 
 ## 제품 원칙
 
@@ -36,4 +36,4 @@ Android와 iOS 앱은 후속 단계에서 Windows Find의 검색 엔진과 연�
 
 현재는 제품 요구사항을 확정하는 기획 단계입니다. 앱 소스코드는 아직 작성하지 않습니다.
 
-상세 요구사항의 단일 기준 문서(SSOT)는 [docs/PRD.md](docs/PRD.md)입니다. 구현과 검토는 README보다 PRD를 우선합니다.
+상세 요구사항의 단일 기준 문서는 [FindInside-기획문서.md](docs/FindInside-기획문서.md)입니다. 구현과 검토는 이 기획문서를 우선합니다.
