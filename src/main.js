@@ -63,6 +63,7 @@ ipcMain.handle("folder:choose", async () => {
 
 ipcMain.handle("state:get", () => ({
   roots: state.roots,
+  excludedPaths: state.excludedPaths,
   indexedAt: state.indexedAt,
   entryCount: state.entries.length,
   errorCount: state.errors.length
@@ -72,6 +73,12 @@ ipcMain.handle("roots:set", async (_, roots) => {
   state.roots = [...new Set(roots.map((item) => path.resolve(item)))];
   await saveState();
   return state.roots;
+});
+
+ipcMain.handle("excludes:set", async (_, excludedPaths) => {
+  state.excludedPaths = [...new Set(excludedPaths.map((item) => path.resolve(item)))];
+  await saveState();
+  return state.excludedPaths;
 });
 
 ipcMain.handle("index:rebuild", async () => {

@@ -10,9 +10,14 @@ const DEFAULT_EXCLUDES = new Set([
   ".git"
 ]);
 
+function isInside(targetPath, parentPath) {
+  const relative = path.relative(parentPath, targetPath);
+  return relative === "" || (relative.split(path.sep)[0] !== ".." && !path.isAbsolute(relative));
+}
+
 function isExcluded(targetPath, excludedPaths) {
   const normalized = path.resolve(targetPath).toLocaleLowerCase();
-  if (excludedPaths.some((item) => normalized.startsWith(path.resolve(item).toLocaleLowerCase()))) {
+  if (excludedPaths.some((item) => isInside(normalized, path.resolve(item).toLocaleLowerCase()))) {
     return true;
   }
   return DEFAULT_EXCLUDES.has(path.basename(normalized));

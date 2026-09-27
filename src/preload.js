@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("findInside", {
   chooseFolder: () => ipcRenderer.invoke("folder:choose"),
   getState: () => ipcRenderer.invoke("state:get"),
   setRoots: (roots) => ipcRenderer.invoke("roots:set", roots),
+  setExcludedPaths: (excludedPaths) => ipcRenderer.invoke("excludes:set", excludedPaths),
   rebuildIndex: () => ipcRenderer.invoke("index:rebuild"),
   search: (query) => ipcRenderer.invoke("search:run", query),
   openItem: (targetPath) => ipcRenderer.invoke("item:open", targetPath),
