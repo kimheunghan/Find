@@ -1,0 +1,15 @@
+{
+  "name": "findinside",
+  "version": "0.1.0",
+  "description": "FindInside Windows PC search application",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js"
+  },
+  "devDependencies": {
+    "electron": "^38.1.2"
+  }
+}
