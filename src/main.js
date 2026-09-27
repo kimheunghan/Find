@@ -93,6 +93,7 @@ function createWindow() {
     minWidth: 820,
     minHeight: 560,
     title: "FindInside",
+    autoHideMenuBar: true,
     backgroundColor: "#0b1020",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -100,6 +101,7 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+  window.setMenuBarVisibility(false);
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
@@ -148,3 +150,20 @@ ipcMain.handle("index:rebuild", async () => {
 ipcMain.handle("search:run", (_, query) => searchEntries(state.entries, query));
 ipcMain.handle("item:open", (_, targetPath) => shell.openPath(targetPath));
 ipcMain.handle("item:show", (_, targetPath) => shell.showItemInFolder(targetPath));
+ipcMain.handle("menu:action", (_, action) => {
+  const webContents = window?.webContents;
+  if (!webContents) return;
+  if (action === "quit") app.quit();
+  else if (action === "reload") webContents.reload();
+  else if (action === "zoomIn") webContents.setZoomLevel(webContents.getZoomLevel() + 0.5);
+  else if (action === "zoomOut") webContents.setZoomLevel(webContents.getZoomLevel() - 0.5);
+  else if (action === "resetZoom") webContents.setZoomLevel(0);
+  else if (action === "about") {
+    dialog.showMessageBox(window, {
+      type: "info",
+      title: "FindInside 정보",
+      message: "FindInside",
+      detail: `버전 ${app.getVersion()}\n파일명, 폴더명과 경로를 빠르게 검색하는 PC 앱입니다.`
+    });
+  }
+});
