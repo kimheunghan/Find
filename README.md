@@ -34,6 +34,11 @@ Windows PC 앱이 색인과 검색 엔진의 중심이고, Android/iOS 앱은 PC
 
 ## 현재 단계
 
-현재는 제품 요구사항을 확정하는 기획 단계입니다. 앱 소스코드는 아직 작성하지 않습니다.
+PC 앱 MVP 개발을 시작했습니다. 현재 구현된 첫 단계는 검색 폴더 선택, 파일명·폴더명·경로 색인과 검색입니다.
 
-상세 요구사항의 단일 기준 문서는 [FindInside-기획문서.md](docs/FindInside-기획문서.md)입니다. 구현과 검토는 이 기획문서를 우선합니다.
+```powershell
+npm install
+npm start
+```
+
+세부 구현 범위와 다음 단계는 [PC-MVP.md](docs/PC-MVP.md)를 참고합니다. 제품 전체 요구사항은 [FindInside-기획문서.md](docs/FindInside-기획문서.md)를 기준으로 합니다.
