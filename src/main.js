@@ -107,7 +107,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   await loadState();
-  createApplicationMenu();
+  Menu.setApplicationMenu(null);
   createWindow();
 
   app.on("activate", () => {
