@@ -12,6 +12,49 @@ let roots = [];
 let excludedPaths = [];
 let timer;
 
+const menuItems = {
+  file: [{ label: "색인 시작", action: "reindex" }, { label: "종료", action: "quit" }],
+  edit: [{ label: "검색어 전체 선택", action: "selectQuery" }, { label: "검색어 지우기", action: "clearQuery" }],
+  view: [{ label: "새로 고침", action: "reload" }, { label: "확대", action: "zoomIn" }, { label: "축소", action: "zoomOut" }, { label: "기본 크기", action: "resetZoom" }]
+};
+
+function closeMenu() {
+  document.querySelector("#menuPopup").hidden = true;
+  document.querySelectorAll("[data-menu]").forEach((button) => button.setAttribute("aria-expanded", "false"));
+}
+
+async function runMenuAction(action) {
+  closeMenu();
+  if (action === "reindex") document.querySelector("#reindex").click();
+  else if (action === "selectQuery") { queryEl.focus(); queryEl.select(); }
+  else if (action === "clearQuery") { queryEl.value = ""; queryEl.dispatchEvent(new Event("input")); queryEl.focus(); }
+  else await window.findInside.runMenuAction(action);
+}
+
+document.querySelectorAll("[data-menu]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const popup = document.querySelector("#menuPopup");
+    const isOpen = button.getAttribute("aria-expanded") === "true";
+    closeMenu();
+    if (isOpen) return;
+    popup.replaceChildren();
+    for (const item of menuItems[button.dataset.menu]) {
+      const menuButton = document.createElement("button");
+      menuButton.textContent = item.label;
+      menuButton.addEventListener("click", () => runMenuAction(item.action));
+      popup.append(menuButton);
+    }
+    popup.style.left = `${button.offsetLeft}px`;
+    popup.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+  });
+});
+
+document.querySelector('[data-action="about"]').addEventListener("click", () => runMenuAction("about"));
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".appMenu")) closeMenu();
+});
+
 function renderFolderList(container, folders, onRemove) {
   container.replaceChildren();
   for (const folder of folders) {

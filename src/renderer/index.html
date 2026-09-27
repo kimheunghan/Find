@@ -7,6 +7,13 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <nav class="appMenu" aria-label="애플리케이션 메뉴">
+      <button type="button" data-menu="file">파일</button>
+      <button type="button" data-menu="edit">편집</button>
+      <button type="button" data-menu="view">보기</button>
+      <button type="button" data-action="about">도움말</button>
+      <div id="menuPopup" class="menuPopup" hidden></div>
+    </nav>
     <aside class="sidebar">
       <div class="brand"><span>F</span> FindInside</div>
       <p class="tagline">이름을 몰라도, 기억나는 내용으로.</p>
