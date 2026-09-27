@@ -1,8 +1,14 @@
 :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; background: #090d18; color: #eef2ff; }
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; display: grid; grid-template-columns: 280px 1fr; background: radial-gradient(circle at 65% -20%, #243b70 0, transparent 42%), #090d18; }
+body { margin: 0; min-height: 100vh; display: grid; grid-template-columns: 280px 1fr; grid-template-rows: 36px 1fr; background: radial-gradient(circle at 65% -20%, #243b70 0, transparent 42%), #090d18; }
 button, input { font: inherit; }
-.sidebar { border-right: 1px solid #20283d; padding: 28px 22px; background: rgba(10, 15, 28, .88); }
+.appMenu { position: relative; grid-column: 1 / -1; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid #20283d; background: #0d1321; }
+.appMenu > button { height: 28px; padding: 0 12px; border: 0; border-radius: 5px; color: #d9e1f2; background: transparent; cursor: pointer; }
+.appMenu > button:hover, .appMenu > button[aria-expanded="true"] { background: #202a40; }
+.menuPopup { position: absolute; z-index: 10; top: 32px; min-width: 170px; padding: 6px; border: 1px solid #34415d; border-radius: 8px; background: #151d2f; box-shadow: 0 16px 34px rgba(0,0,0,.36); }
+.menuPopup button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; color: #e5eaf6; background: transparent; text-align: left; cursor: pointer; }
+.menuPopup button:hover { background: #28344e; }
+.sidebar { grid-row: 2; border-right: 1px solid #20283d; padding: 28px 22px; background: rgba(10, 15, 28, .88); }
 .brand { font-size: 22px; font-weight: 750; letter-spacing: -.4px; }
 .brand span { display: inline-grid; place-items: center; width: 34px; height: 34px; margin-right: 8px; border-radius: 10px; background: #5b7cfa; }
 .tagline { color: #919bb3; font-size: 13px; margin: 12px 0 36px; }
@@ -13,7 +19,7 @@ h2 { font-size: 13px; color: #aeb8ce; margin: 0 0 12px; }
 .primary { margin-top: 8px; color: white; background: #5b7cfa; font-weight: 650; }
 .secondary { color: #cdd6ea; background: #1a2235; }
 .status { margin-top: 18px; font-size: 12px; line-height: 1.6; color: #8490aa; }
-main { padding: 30px 44px; min-width: 0; }
+main { grid-row: 2; padding: 30px 44px; min-width: 0; }
 header { max-width: 900px; margin: 0 auto; }
 .searchBox { display: flex; align-items: center; gap: 12px; padding: 15px 18px; border: 1px solid #313d58; border-radius: 14px; background: rgba(19, 27, 44, .94); box-shadow: 0 20px 50px rgba(0,0,0,.22); }
 .searchBox span { color: #8fa5ff; font-size: 25px; }
