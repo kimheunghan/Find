@@ -17,6 +17,7 @@ test("Electron 기본 메뉴를 숨기고 앱 내부 한국어 메뉴를 사용�
   const html = fs.readFileSync(path.join(__dirname, "../src/renderer/index.html"), "utf8");
   assert.match(mainSource, /autoHideMenuBar: true/);
   assert.match(mainSource, /setMenuBarVisibility\(false\)/);
+  assert.match(mainSource, /Menu\.setApplicationMenu\(null\)/);
   for (const label of ["파일", "편집", "보기", "도움말"]) {
     assert.match(html, new RegExp(`>${label}<`));
   }
