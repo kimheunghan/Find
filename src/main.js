@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { indexRoots } = require("./indexer");
@@ -8,6 +8,66 @@ const { searchEntries } = require("./search");
 
 let window;
 let state = { roots: [], excludedPaths: [], entries: [], errors: [], indexedAt: null };
+
+function createApplicationMenu() {
+  const template = [
+    {
+      label: "파일",
+      submenu: [
+        { label: "창 닫기", role: "close" },
+        { type: "separator" },
+        { label: "종료", role: "quit" }
+      ]
+    },
+    {
+      label: "편집",
+      submenu: [
+        { label: "실행 취소", role: "undo" },
+        { label: "다시 실행", role: "redo" },
+        { type: "separator" },
+        { label: "잘라내기", role: "cut" },
+        { label: "복사", role: "copy" },
+        { label: "붙여넣기", role: "paste" },
+        { label: "전체 선택", role: "selectAll" }
+      ]
+    },
+    {
+      label: "보기",
+      submenu: [
+        { label: "새로 고침", role: "reload" },
+        { type: "separator" },
+        { label: "확대", role: "zoomIn" },
+        { label: "축소", role: "zoomOut" },
+        { label: "기본 크기", role: "resetZoom" },
+        { type: "separator" },
+        { label: "전체 화면", role: "togglefullscreen" }
+      ]
+    },
+    {
+      label: "창",
+      submenu: [
+        { label: "최소화", role: "minimize" },
+        { label: "확대/복원", role: "zoom" }
+      ]
+    },
+    {
+      label: "도움말",
+      submenu: [
+        {
+          label: "FindInside 정보",
+          click: () => dialog.showMessageBox(window, {
+            type: "info",
+            title: "FindInside 정보",
+            message: "FindInside",
+            detail: `버전 ${app.getVersion()}\n파일명, 폴더명과 경로를 빠르게 검색하는 PC 앱입니다.`
+          })
+        }
+      ]
+    }
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 function stateFile() {
   return path.join(app.getPath("userData"), "findinside-index.json");
@@ -45,6 +105,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   await loadState();
+  createApplicationMenu();
   createWindow();
 
   app.on("activate", () => {
