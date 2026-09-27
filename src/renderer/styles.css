@@ -2,8 +2,8 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; display: grid; grid-template-columns: 280px 1fr; grid-template-rows: 36px 1fr; background: radial-gradient(circle at 65% -20%, #243b70 0, transparent 42%), #090d18; }
 button, input { font: inherit; }
-.appMenu { position: relative; grid-column: 1 / -1; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid #20283d; background: #0d1321; }
-.appMenu > button { height: 28px; padding: 0 12px; border: 0; border-radius: 5px; color: #d9e1f2; background: transparent; cursor: pointer; }
+.appMenu { position: relative; z-index: 20; grid-column: 1 / -1; display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid #20283d; background: #0d1321; pointer-events: auto; }
+.appMenu > button { height: 28px; padding: 0 12px; border: 0; border-radius: 5px; color: #d9e1f2; background: transparent; cursor: pointer; pointer-events: auto; }
 .appMenu > button:hover, .appMenu > button[aria-expanded="true"] { background: #202a40; }
 .menuPopup { position: absolute; z-index: 10; top: 32px; min-width: 170px; padding: 6px; border: 1px solid #34415d; border-radius: 8px; background: #151d2f; box-shadow: 0 16px 34px rgba(0,0,0,.36); }
 .menuPopup button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 5px; color: #e5eaf6; background: transparent; text-align: left; cursor: pointer; }
