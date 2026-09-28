@@ -125,7 +125,11 @@ async function indexContent(db, entries, options = {}) {
     ...supported.filter((entry) => !IMAGE_EXTENSIONS.has(entry.extension)),
     ...supported.filter((entry) => IMAGE_EXTENSIONS.has(entry.extension))
   ];
-  const known = new Map(db.prepare("SELECT id, path, size, modified_at, status FROM files").all().map((row) => [row.path, row]));
+  // options.owns(path): 이 작업이 맡은 파일인지 (문서 worker와 OCR worker가 동시에 돌 때 서로의 기록을 지우지 않게)
+  const owns = options.owns || (() => true);
+  const known = new Map(db.prepare("SELECT id, path, size, modified_at, status FROM files").all()
+    .filter((row) => owns(row.path))
+    .map((row) => [row.path, row]));
   const summary = { total: targets.length, extracted: 0, skipped: 0, errors: 0 };
 
   for (const [index, entry] of targets.entries()) {

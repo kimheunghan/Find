@@ -477,13 +477,23 @@ function showIndexDone(result) {
   if (queryEl.value.trim()) runSearch();
 }
 
+let ocrStatus = "";
+
 window.findInside.onIndexProgress((progress) => {
+  if (progress.phase === "ocr") {
+    ocrStatus = progress.finished
+      ? (progress.error ? `이미지 OCR 중단: ${progress.error}` : "이미지 OCR 완료")
+      : `이미지 OCR 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`;
+    const lines = statusEl.textContent.split("\n").filter((line) => !line.startsWith("이미지 OCR"));
+    statusEl.textContent = [...lines, ocrStatus].join("\n");
+    return;
+  }
   if (progress.phase !== "content") {
     statusEl.textContent = `${progress.scanned.toLocaleString()}개 항목 확인 중…`;
     return;
   }
   contentIndexing = true;
-  statusEl.textContent = `파일 내용 색인 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}
+  statusEl.textContent = `${ocrStatus ? `${ocrStatus}\n` : ""}파일 내용 색인 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}
 끝난 파일부터 검색 결과에 반영됩니다.`;
   // 색인 중에도 검색어가 있으면 몇 초마다 결과를 새로 고쳐 새로 색인된 내용을 보여 준다.
   if (queryEl.value.trim() && Date.now() - lastProgressSearch > 5000) {
@@ -507,6 +517,8 @@ window.findInside.onIndexDone(showIndexDone);
       : contentCount
         ? `${state.entryCount.toLocaleString()}개 항목 · 본문 ${contentCount.toLocaleString()}개 색인됨`
         : `${state.entryCount.toLocaleString()}개 항목 색인됨 · 본문 색인을 시작합니다…`;
+  } else {
+    statusEl.textContent = "색인할 폴더를 선택하세요.";
   }
   setFilterPanelOpen(loadFilterPanelOpen());
   renderResults([]);

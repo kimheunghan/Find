@@ -9,14 +9,16 @@ app.commandLine.appendSwitch("disable-gpu-compositing");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { indexRoots } = require("./indexer");
-const { searchEntries, tokenize, prepareEntries } = require("./search");
 const { Worker } = require("node:worker_threads");
-const { openContentIndex, searchContent, contentStats } = require("./contentIndex");
-const { SUPPORTED_EXTENSIONS } = require("./extract");
+const { openContentIndex, contentStats } = require("./contentIndex");
+const { SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS } = require("./extract");
 
 let window;
 let contentDb;
-let state = { roots: [], excludedPaths: [], entries: [], errors: [], indexedAt: null };
+// 설정(검색 위치·제외 폴더)은 작은 설정 파일에, 파일 목록(수백 MB)은 색인 파일에 둔다.
+// 메인 프로세스는 파일 목록을 들고 있지 않는다. 목록은 검색 worker가 읽어 검색한다.
+let settings = { roots: [], excludedPaths: [] };
+let meta = { entryCount: 0, errorCount: 0, indexedAt: null };
 
 function createApplicationMenu() {
   const template = [
@@ -78,21 +80,58 @@ function createApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function stateFile() {
+function indexFile() {
   return path.join(app.getPath("userData"), "findinside-index.json");
 }
 
-async function loadState() {
+function settingsFile() {
+  return path.join(app.getPath("userData"), "findinside-settings.json");
+}
+
+// 설정 파일이 없으면(예전 버전) null. 그때는 색인 파일 안의 설정을 옮겨 쓴다.
+async function loadSettings() {
   try {
-    state = JSON.parse(await fs.readFile(stateFile(), "utf8"));
+    return JSON.parse(await fs.readFile(settingsFile(), "utf8"));
   } catch {
-    state = { roots: [], excludedPaths: [], entries: [], errors: [], indexedAt: null };
+    return null;
   }
 }
 
-async function saveState() {
-  await fs.mkdir(path.dirname(stateFile()), { recursive: true });
-  await fs.writeFile(stateFile(), JSON.stringify(state), "utf8");
+async function saveSettings() {
+  await fs.mkdir(app.getPath("userData"), { recursive: true });
+  await fs.writeFile(settingsFile(), JSON.stringify(settings), "utf8");
+}
+
+// ---- 검색 worker ----
+let searchWorker;
+let searchReady;
+let nextRequest = 1;
+const pendingRequests = new Map();
+
+function startSearchWorker() {
+  searchWorker = new Worker(path.join(__dirname, "searchWorker.js"), { workerData: { dbPath: contentDbPath(), indexPath: indexFile() } });
+  searchWorker.on("message", ({ id, result, error }) => {
+    const request = pendingRequests.get(id);
+    if (!request) return;
+    pendingRequests.delete(id);
+    if (error) request.reject(new Error(error));
+    else request.resolve(result);
+  });
+}
+
+function askSearchWorker(type, payload = {}) {
+  return new Promise((resolve, reject) => {
+    const id = nextRequest++;
+    pendingRequests.set(id, { resolve, reject });
+    searchWorker.postMessage({ id, type, ...payload });
+  });
+}
+
+// 색인 파일을 검색 worker가 (다시) 읽게 하고, 개수·내용 색인 대상을 받아 둔다.
+async function reloadIndex() {
+  const loaded = await askSearchWorker("load");
+  meta = { entryCount: loaded.entryCount, errorCount: loaded.errorCount, indexedAt: loaded.indexedAt };
+  return loaded;
 }
 
 function createWindow() {
@@ -115,15 +154,25 @@ function createWindow() {
   window.setMenuBarVisibility(false);
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
   window.webContents.once("did-finish-load", () => {
-    if (state.entries.length) runIndexing(refreshContent).catch(() => {});
+    searchReady.then((loaded) => {
+      if (loaded.entryCount) runIndexing(() => refreshContent(loaded.targets)).catch(() => {});
+    });
   });
 }
 
 app.whenReady().then(async () => {
-  await loadState();
-  prepareEntries(state.entries);
   await fs.mkdir(app.getPath("userData"), { recursive: true });
   contentDb = openContentIndex(contentDbPath(), { migrate: false });
+  const savedSettings = await loadSettings();
+  if (savedSettings) settings = { roots: savedSettings.roots || [], excludedPaths: savedSettings.excludedPaths || [] };
+  startSearchWorker();
+  searchReady = reloadIndex().then(async (loaded) => {
+    if (!savedSettings) {
+      settings = { roots: loaded.roots, excludedPaths: loaded.excludedPaths };
+      await saveSettings();
+    }
+    return loaded;
+  });
   Menu.setApplicationMenu(null);
   createWindow();
 
@@ -141,26 +190,27 @@ ipcMain.handle("folder:choose", async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle("state:get", () => ({
-  roots: state.roots,
-  excludedPaths: state.excludedPaths,
-  indexedAt: state.indexedAt,
-  entryCount: state.entries.length,
-  errorCount: state.errors.length,
-  indexing: Boolean(indexing),
-  content: contentDb ? contentStats(contentDb) : {}
-}));
+ipcMain.handle("state:get", async () => {
+  await searchReady;
+  return {
+    roots: settings.roots,
+    excludedPaths: settings.excludedPaths,
+    ...meta,
+    indexing: Boolean(indexing),
+    content: contentDb ? contentStats(contentDb) : {}
+  };
+});
 
 ipcMain.handle("roots:set", async (_, roots) => {
-  state.roots = [...new Set(roots.map((item) => path.resolve(item)))];
-  await saveState();
-  return state.roots;
+  settings.roots = [...new Set(roots.map((item) => path.resolve(item)))];
+  await saveSettings();
+  return settings.roots;
 });
 
 ipcMain.handle("excludes:set", async (_, excludedPaths) => {
-  state.excludedPaths = [...new Set(excludedPaths.map((item) => path.resolve(item)))];
-  await saveState();
-  return state.excludedPaths;
+  settings.excludedPaths = [...new Set(excludedPaths.map((item) => path.resolve(item)))];
+  await saveSettings();
+  return settings.excludedPaths;
 });
 
 let indexing = null;
@@ -177,7 +227,7 @@ function runIndexing(job) {
 }
 
 function indexSummary(content) {
-  return { entryCount: state.entries.length, errorCount: state.errors.length, indexedAt: state.indexedAt, content };
+  return { ...meta, content };
 }
 
 function contentDbPath() {
@@ -186,12 +236,36 @@ function contentDbPath() {
 
 // 내용 추출은 worker 스레드에서 돌려 창 입력이 멈추지 않게 한다.
 // 전체 목록(수백만 개)을 넘기면 복사 비용이 커서, 내용 색인 대상 파일만 골라 넘긴다.
-function indexContentInWorker(entries) {
-  const targets = entries
-    .filter((entry) => entry.kind === "file" && SUPPORTED_EXTENSIONS.has(entry.extension))
+// 이미지 OCR은 한 장에 수 초가 걸려 문서 뒤로 미루면 몇 시간씩 시작하지 못하므로, 별도 worker로 동시에 돌린다.
+function contentTargets(entries, group) {
+  return entries
+    .filter((entry) => entry.kind === "file" && SUPPORTED_EXTENSIONS.has(entry.extension)
+      && (group === "images") === IMAGE_EXTENSIONS.has(entry.extension))
     .map(({ name, path: filePath, kind, extension }) => ({ name, path: filePath, kind, extension }));
+}
+
+let ocrWorker = null;
+
+function startOcr(targets) {
+  ocrWorker?.terminate();
+  const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "images" } });
+  ocrWorker = worker;
+  worker.on("message", (message) => {
+    if (message.type === "progress") window?.webContents.send("index:progress", { phase: "ocr", ...message.progress });
+    else if (message.type === "done" || message.type === "error") {
+      window?.webContents.send("index:progress", { phase: "ocr", done: targets.length, total: targets.length, finished: true, error: message.message });
+      worker.terminate();
+    }
+  });
+  worker.on("exit", () => { if (ocrWorker === worker) ocrWorker = null; });
+  worker.postMessage({ type: "index", entries: targets });
+}
+
+// targets: { documents, images } (내용 색인 대상 문서·이미지)
+function indexContentInWorker({ documents: targets, images }) {
+  startOcr(images);
   return new Promise((resolve, reject) => {
-    const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath() } });
+    const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "documents" } });
     worker.on("message", (message) => {
       if (message.type === "progress") {
         window?.webContents.send("index:progress", { phase: "content", ...message.progress });
@@ -211,26 +285,28 @@ function indexContentInWorker(entries) {
 ipcMain.handle("index:rebuild", () => runIndexing(rebuildIndex));
 
 // 앱을 켤 때: 파일 목록은 저장된 것을 쓰고, 내용 색인만 이어서 만든다. 바뀌지 않은 파일은 건너뛴다.
-async function refreshContent() {
-  return indexSummary(await indexContentInWorker(state.entries));
+async function refreshContent(targets) {
+  return indexSummary(await indexContentInWorker(targets));
 }
 
 async function rebuildIndex() {
-  const result = await indexRoots(state.roots, {
-    excludedPaths: state.excludedPaths,
+  await searchReady;
+  const result = await indexRoots(settings.roots, {
+    excludedPaths: settings.excludedPaths,
     onProgress: (progress) => window?.webContents.send("index:progress", progress)
   });
-  state = { ...state, ...result };
-  prepareEntries(state.entries);
-  await saveState();
-  return indexSummary(await indexContentInWorker(state.entries));
+  // 색인 파일에는 예전 버전과 호환되도록 설정도 함께 적는다.
+  await fs.writeFile(indexFile(), JSON.stringify({ ...settings, ...result }), "utf8");
+  const targets = { documents: contentTargets(result.entries, "documents"), images: contentTargets(result.entries, "images") };
+  searchReady = reloadIndex();
+  await searchReady;
+  return indexSummary(await indexContentInWorker(targets));
 }
 
-ipcMain.handle("search:run", (_, query, filters) => {
-  const contentMatches = contentDb ? searchContent(contentDb, tokenize(query)) : new Map();
-  const stats = {};
-  const items = searchEntries(state.entries, query, filters || {}, 200, contentMatches, stats);
-  return { items, total: stats.total || 0 };
+// 검색은 검색 worker가 한다 (메인 프로세스가 붙잡히면 한/영 전환 등 키 입력이 막힌다).
+ipcMain.handle("search:run", async (_, query, filters) => {
+  await searchReady;
+  return askSearchWorker("search", { query, filters: filters || {} });
 });
 ipcMain.handle("item:open", (_, targetPath) => shell.openPath(targetPath));
 ipcMain.handle("item:show", (_, targetPath) => shell.showItemInFolder(targetPath));
