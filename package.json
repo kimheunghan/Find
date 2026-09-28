@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js && node --check src/tokens.js && node --check src/hanja.js && node --check src/ocrLoose.js && node --check src/extract.js && node --check src/ocr.js && node --check src/contentIndex.js && node --check src/contentWorker.js && node --check src/searchWorker.js && node --check src/renderer/highlight.js && node --check src/renderer/renderer.js",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js && node --check src/tokens.js && node --check src/hanja.js && node --check src/ocrLoose.js && node --check src/mail.js && node --check src/extract.js && node --check src/ocr.js && node --check src/contentIndex.js && node --check src/contentWorker.js && node --check src/searchWorker.js && node --check src/renderer/highlight.js && node --check src/renderer/renderer.js",
     "setup:ocr": "powershell -ExecutionPolicy Bypass -File scripts/setup-ocr.ps1",
     "qa:ocr": "node scripts/qa-ocr.js",
     "dist": "electron-builder --win nsis --x64 --publish never"
@@ -17,7 +17,9 @@
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
+    "@kenjiuno/msgreader": "^1.28.0",
     "cfb": "^1.2.2",
+    "mailparser": "^3.9.30",
     "pdfjs-dist": "^6.3.289"
   },
   "productName": "FindInside",

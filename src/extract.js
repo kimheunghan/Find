@@ -3,6 +3,8 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const zlib = require("node:zlib");
+const os = require("node:os");
+const { parseMail } = require("./mail");
 const { extractImageText } = require("./ocr");
 
 const MAX_FILE_SIZE = 30 * 1024 * 1024;
@@ -10,7 +12,11 @@ const CHUNK_CHARS = 800;
 const TEXT_EXTENSIONS = new Set(["txt", "csv", "md", "log"]);
 const ZIP_EXTENSIONS = new Set(["docx", "xlsx", "pptx", "hwpx"]);
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff"]);
-const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, ...ZIP_EXTENSIONS, ...IMAGE_EXTENSIONS, "hwp", "pdf"]);
+const MAIL_EXTENSIONS = new Set(["eml", "msg"]);
+const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, ...ZIP_EXTENSIONS, ...IMAGE_EXTENSIONS, ...MAIL_EXTENSIONS, "hwp", "pdf"]);
+// 첨부된 메일 안의 첨부된 메일은 3단계까지만 푼다 (ADR-0004 결정 2). 첨부는 메일 하나에 최대 50개.
+const MAX_MAIL_DEPTH = 3;
+const MAX_ATTACHMENTS = 50;
 // 형식별 추출 방식 버전. 올리면 그 형식의 파일만 백그라운드에서 다시 추출한다 (PDF·이미지 OCR은 다시 하지 않음).
 // 2: 실제 일치한 줄·칸 위치(marks), HWP·HWPX·DOCX 쪽 번호, PPTX 발표 순서·시작 번호
 // 이미지: 4 = Windows OCR 빠른 판독(작은 글씨 2배 확대, 세로쓰기 다시 읽기), 5 = 빠른 판독 + PaddleOCR 정밀 판독 (PRECISE_OCR_VERSION)
@@ -634,13 +640,60 @@ async function extractPdf(buffer) {
   return chunks;
 }
 
-// options.preciseOcr: 이미지를 두 OCR 엔진으로 정밀 판독한다.
-async function extractFile(filePath, options = {}) {
-  const extension = path.extname(filePath).slice(1).toLocaleLowerCase();
+// ---- 메일 (EML·MSG) ----
+
+// 조각 위치에 첨부파일 이름을 붙인다 (조각 안 위치 표시 marks에도).
+function inAttachment(chunks, name) {
+  return chunks.map((chunk) => {
+    const location = { ...(chunk.location || {}), attachment: name };
+    if (Array.isArray(location.marks)) location.marks = location.marks.map(([offset, mark]) => [offset, { ...mark, attachment: name }]);
+    return { ...chunk, location };
+  });
+}
+
+async function mailChunks(mail, options, depth) {
+  const header = [
+    mail.subject && `제목: ${mail.subject}`,
+    mail.from && `보낸 사람: ${mail.from}`,
+    mail.to && `받는 사람: ${mail.to}`,
+    mail.cc && `참조: ${mail.cc}`,
+    mail.date && `날짜: ${mail.date.slice(0, 10)}`
+  ].filter(Boolean).join("\n");
+  const chunks = header ? [{ location: { mail: "header" }, text: header }] : [];
+  chunks.push(...chunkLines(String(mail.body || "").split(/\r?\n/), (index) => ({ mail: "body", line: index + 1 })));
+
+  for (const attachment of (mail.attachments || []).slice(0, MAX_ATTACHMENTS)) {
+    const name = String(attachment.name || "첨부 파일");
+    chunks.push({ location: { attachment: name }, text: `첨부: ${name}` });
+    let inner = null;
+    try {
+      if (attachment.mail && depth < MAX_MAIL_DEPTH) inner = await mailChunks(attachment.mail, options, depth + 1);
+      else if (attachment.content && attachment.content.length <= MAX_FILE_SIZE) inner = await extractBuffer(attachment.content, name, options, depth + 1);
+    } catch {
+      inner = null; // 읽을 수 없는 첨부는 이름만 색인한다
+    }
+    if (inner?.length) chunks.push(...inAttachment(inner, name));
+  }
+  return chunks;
+}
+
+// 파일 내용(buffer)을 이름의 확장자에 맞춰 추출한다. 메일 첨부파일도 이 함수로 읽는다.
+// options.filePath: 원본 파일 경로(있으면 이미지 OCR이 그 파일을 직접 읽는다).
+async function extractBuffer(buffer, fileName, options = {}, depth = 0) {
+  const extension = path.extname(fileName).slice(1).toLocaleLowerCase();
   if (!SUPPORTED_EXTENSIONS.has(extension)) return null;
-  // 이미지는 Python OCR 프로세스가 직접 읽는다. 큰 이미지 전체를 Node 메모리에 중복 적재하지 않는다.
-  if (IMAGE_EXTENSIONS.has(extension)) return options.preciseOcr ? extractImagePrecise(filePath) : extractImageText(filePath, "windows");
-  const buffer = await fs.readFile(filePath);
+  if (IMAGE_EXTENSIONS.has(extension)) {
+    if (options.filePath && depth === 0) return extractImageFile(options.filePath, options);
+    // 첨부 이미지: OCR 프로그램이 파일 경로로 읽으므로 임시 파일로 풀어서 읽는다.
+    const temp = path.join(os.tmpdir(), `findinside-attach-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`);
+    await fs.writeFile(temp, buffer);
+    try {
+      return await extractImageFile(temp, options);
+    } finally {
+      await fs.rm(temp, { force: true });
+    }
+  }
+  if (MAIL_EXTENSIONS.has(extension)) return mailChunks(await parseMail(buffer, extension), options, depth);
   if (TEXT_EXTENSIONS.has(extension)) return extractPlainText(buffer);
   if (extension === "hwp") return extractHwp(buffer);
   if (extension === "pdf") return extractPdf(buffer);
@@ -652,8 +705,29 @@ async function extractFile(filePath, options = {}) {
   return extractHwpx(zip);
 }
 
+function extractImageFile(filePath, options) {
+  return options.preciseOcr ? extractImagePrecise(filePath) : extractImageText(filePath, "windows");
+}
+
+// options.preciseOcr: 이미지를 두 OCR 엔진으로 정밀 판독한다.
+async function extractFile(filePath, options = {}) {
+  const extension = path.extname(filePath).slice(1).toLocaleLowerCase();
+  if (!SUPPORTED_EXTENSIONS.has(extension)) return null;
+  // 이미지는 OCR 프로그램이 파일을 직접 읽는다. 큰 이미지 전체를 Node 메모리에 올리지 않는다.
+  if (IMAGE_EXTENSIONS.has(extension)) return extractImageFile(filePath, options);
+  return extractBuffer(await fs.readFile(filePath), path.basename(filePath), { ...options, filePath });
+}
+
 function describeLocation(location) {
   if (!location) return "";
+  // 메일 첨부파일 안: "첨부 견적서.pdf 3쪽"
+  if (location.attachment !== undefined) {
+    const { attachment, ...inner } = location;
+    const rest = describeLocation(Object.keys(inner).length ? inner : null);
+    return `첨부 ${attachment}${rest ? ` ${rest}` : ""}`;
+  }
+  if (location.mail === "header") return "메일 제목·주소";
+  if (location.mail === "body") return location.line ? `메일 본문 ${location.line}번째 줄` : "메일 본문";
   if (location.ocr) return location.line ? `이미지 OCR ${location.vertical ? "세로 " : ""}${location.line}번째 줄` : "이미지 OCR";
   if (location.sheet !== undefined) return `${location.sheet} 시트 ${location.cell || ""}`.trim();
   if (location.tableFrom) return `${location.tableFrom}쪽에서 시작하는 표 안`;
@@ -665,4 +739,4 @@ function describeLocation(location) {
   return "";
 }
 
-module.exports = { imageSize, readImageSize, MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, PRECISE_OCR_VERSION, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };
+module.exports = { extractBuffer, MAIL_EXTENSIONS, imageSize, readImageSize, MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, PRECISE_OCR_VERSION, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };
