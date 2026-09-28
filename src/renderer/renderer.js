@@ -166,7 +166,7 @@ function renderResults(items, total = items.length) {
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = queryEl.value ? "일치하는 파일, 폴더 또는 내용이 없습니다." : "검색어를 입력하세요.";
+    empty.textContent = queryEl.value ? emptyMessage() : "검색어를 입력하세요.";
     resultsEl.append(empty);
     return;
   }
@@ -373,7 +373,7 @@ async function runSearch() {
     hintEl.textContent = `색인되지 않은 범위: ${unindexed.join(", ")} — 왼쪽 검색 위치에 추가하고 색인하세요.`;
   } else {
     hintEl.textContent = query
-      ? `${describeSearch(query)}${contentIndexing ? " · 내용 색인 진행 중" : ""}`
+      ? `${describeSearch(query)}${workText() ? ` · 진행 중: ${workText()}` : ""}`
       : "검색어를 입력하세요.";
   }
   // 검색이 겹치면 늦게 도착한 이전 검색 결과가 새 결과를 덮어쓰지 않게 마지막 요청만 그린다.
@@ -737,6 +737,14 @@ document.querySelector("#syncMail").addEventListener("click", () => {
 window.findInside.onMailProgress(async (progress) => {
   const account = mailAccounts.find((item) => item.id === progress.account);
   const label = account?.name || account?.email || "메일";
+  work.mail = progress.finished ? null : { done: progress.done || 0, total: progress.total || 0 };
+  refreshWorkHint();
+  if (progress.finished && queryEl.value.trim()) runSearch();
+  else if (progress.total && queryEl.value.trim() && source !== "pc" && Date.now() - lastProgressSearch > 5000) {
+    // 가져온 메일부터 검색되므로 진행 중에도 몇 초마다 결과를 새로 고친다
+    lastProgressSearch = Date.now();
+    runSearch();
+  }
   if (progress.finished) {
     mailStatusEl.textContent = progress.error ? `${label}: 가져오기 실패 — ${progress.error}` : `${label}: 새 메일 ${progress.fetched.toLocaleString()}통 가져옴`;
     await loadMailAccounts();
@@ -846,11 +854,44 @@ queryEl.addEventListener("input", (event) => {
 });
 queryEl.addEventListener("compositionend", scheduleSearch);
 
-let contentIndexing = false;
+// ---- 진행 중인 작업: 검색 결과가 없을 때 "정말 없음"인지 "아직 읽는 중"인지 알려 주려고 모은다 ----
+const work = { names: null, content: null, ocr: null, mail: null };
+const count = (value) => Number(value || 0).toLocaleString();
+
+// 지금 분류(전체·PC·메일)의 결과에 영향을 주는 작업만 사람이 읽는 말로
+function workText(forSource = source) {
+  const parts = [];
+  if (forSource !== "mail") {
+    if (work.names) parts.push(`파일 목록 만드는 중(${count(work.names.scanned)}개 확인)`);
+    if (work.content) parts.push(work.content.total ? `문서 내용 읽는 중 ${count(work.content.done)}/${count(work.content.total)}` : "문서 내용 읽기 준비 중");
+    if (work.ocr) parts.push(`이미지 글자 읽는 중 ${count(work.ocr.done)}/${count(work.ocr.total)}`);
+  }
+  if (forSource !== "pc" && work.mail) parts.push(work.mail.total ? `메일 가져오는 중 ${count(work.mail.done)}/${count(work.mail.total)}` : "메일 서버에 연결하는 중");
+  return parts.join(" · ");
+}
+
+function emptyMessage() {
+  const what = source === "mail" ? "일치하는 메일이 없습니다." : source === "pc" ? "일치하는 파일, 폴더 또는 내용이 없습니다." : "일치하는 파일, 폴더, 내용 또는 메일이 없습니다.";
+  const pending = workText();
+  return pending
+    ? `아직 찾지 못했습니다. 지금 ${pending}이라 끝나면 결과가 더 나올 수 있습니다. 진행되는 대로 결과를 새로 고칩니다.`
+    : `${what} (색인 완료 상태에서 찾은 결과입니다)`;
+}
+
+// 작업 상태가 바뀌면 다시 검색하지 않고 안내 문구만 고친다
+function refreshWorkHint() {
+  const query = queryEl.value.trim();
+  if (query && !hintEl.classList.contains("warn")) hintEl.textContent = `${describeSearch(query)}${workText() ? ` · 진행 중: ${workText()}` : ""}`;
+  const empty = resultsEl.querySelector(".empty");
+  if (empty && query && resultsEl.dataset.query === query && !empty.textContent.startsWith("검색 중 오류")) empty.textContent = emptyMessage();
+}
+
 let lastProgressSearch = 0;
 
 function showIndexDone(result) {
-  contentIndexing = false;
+  work.names = null;
+  work.content = null;
+  refreshWorkHint();
   statusEl.textContent = `${result.entryCount.toLocaleString()}개 항목 색인 완료 · 내용 추출 ${result.content.extracted.toLocaleString()}개(변경 없음 ${result.content.skipped.toLocaleString()}개) · 오류 ${(result.errorCount + result.content.errors).toLocaleString()}개`;
   if (queryEl.value.trim()) runSearch();
 }
@@ -863,15 +904,22 @@ window.findInside.onIndexProgress((progress) => {
     ocrStatus = progress.finished
       ? (progress.error ? `${label} 중단: ${progress.error}` : `${label} 완료`)
       : `${label} 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`;
+    work.ocr = progress.finished ? null : { done: progress.done, total: progress.total };
+    refreshWorkHint();
+    if (progress.finished && queryEl.value.trim()) runSearch();
     const lines = statusEl.textContent.split("\n").filter((line) => !line.startsWith("이미지 OCR"));
     statusEl.textContent = [...lines, ocrStatus].join("\n");
     return;
   }
   if (progress.phase !== "content") {
     statusEl.textContent = `${progress.scanned.toLocaleString()}개 항목 확인 중…`;
+    work.names = { scanned: progress.scanned };
+    refreshWorkHint();
     return;
   }
-  contentIndexing = true;
+  work.names = null;
+  work.content = { done: progress.done, total: progress.total };
+  refreshWorkHint();
   statusEl.textContent = `${ocrStatus ? `${ocrStatus}\n` : ""}파일 내용 색인 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}
 끝난 파일부터 검색 결과에 반영됩니다.`;
   // 색인 중에도 검색어가 있으면 몇 초마다 결과를 새로 고쳐 새로 색인된 내용을 보여 준다.
@@ -899,6 +947,7 @@ window.findInside.onIndexChanged(() => {
   renderExcludes();
   if (state.entryCount) {
     const contentCount = Number(state.content?.done || 0);
+    if (state.indexing) work.content = {};
     statusEl.textContent = state.indexing
       ? "파일 내용 색인을 준비하고 있습니다…"
       : contentCount
