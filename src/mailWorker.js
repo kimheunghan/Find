@@ -17,6 +17,7 @@ const db = openContentIndex(workerData.dbPath, { migrate: false });
 // 메일 서버 오류를 사용자가 고칠 수 있는 안내로 바꾼다
 function friendlyError(error) {
   const text = [error.code, error.responseText, error.message].filter(Boolean).join(" ");
+  if (/NOTPOP3/.test(text)) return "POP3 서버가 아닙니다. 받는 메일 서버(POP3/IMAP) 주소와 포트를 확인하세요. (smtp로 시작하는 주소는 보내는 메일 서버입니다)";
   if (/ENOTFOUND|EAI_AGAIN/.test(text)) return "서버 주소를 찾을 수 없습니다. IMAP 서버 이름을 확인하세요.";
   if (/ECONNREFUSED/.test(text)) return "서버가 연결을 거부했습니다. 포트와 보안 방식을 확인하세요.";
   if (/ETIMEDOUT|timeout|Timeout/.test(text)) return "서버 응답이 없습니다. 포트·보안 방식이나 회사 방화벽을 확인하세요.";

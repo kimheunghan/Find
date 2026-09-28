@@ -45,10 +45,10 @@ class Pop3Connection {
     const firstEnd = this.buffer.indexOf("\r\n");
     if (firstEnd < 0) return;
     const status = this.buffer.subarray(0, firstEnd).toString("latin1");
-    if (status.startsWith("-ERR")) {
+    if (!status.startsWith("+OK")) {
       this.buffer = this.buffer.subarray(firstEnd + 2);
       this.waiting = null;
-      reject(new Error(status.slice(5) || "POP3 오류"));
+      reject(new Error(status.startsWith("-ERR") ? (status.slice(5) || "POP3 오류") : `NOTPOP3 ${status.slice(0, 80)}`));
       return;
     }
     if (!multiline) {

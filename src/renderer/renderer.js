@@ -390,7 +390,7 @@ async function runSearch() {
   // 검색이 실패하면 이전 화면을 그대로 두지 않고 이유를 알린다.
   if (failed) {
     renderResults([]);
-    resultsEl.querySelector(".empty").textContent = `검색 중 오류가 났습니다. 잠시 뒤 다시 시도하세요. (${String(failed.message || failed).replace(/^Error invoking remote method '[^']+': /, "")})`;
+    resultsEl.querySelector(".empty").textContent = `검색 중 오류가 났습니다. 잠시 뒤 다시 시도하세요. (${String(failed.message || failed).replace(/^Error invoking remote method '[^']+': (Error: )?/, "")})`;
     resultsEl.dataset.query = query;
     return;
   }
@@ -471,7 +471,18 @@ function renderMailPanel() {
       warn.textContent = `⚠ ${account.lastError}`;
       info.append(warn);
     }
-    card.append(info, button("설정", "secondary", () => openMailDialog(account)));
+    const actions = document.createElement("div");
+    actions.className = "mailCardActions";
+    actions.append(
+      button("설정", "secondary", () => openMailDialog(account)),
+      button("삭제", "secondary", async () => {
+        if (!confirm(`"${account.name || account.email || account.user}" 계정을 삭제할까요? 이 계정에서 가져온 메일 색인도 지웁니다.`)) return;
+        await window.findInside.removeMail(account.id);
+        await loadMailAccounts();
+        if (queryEl.value.trim()) runSearch();
+      })
+    );
+    card.append(info, actions);
     return card;
   });
   const actions = document.createElement("div");
@@ -500,7 +511,7 @@ async function openMailItem(item) {
     hintEl.textContent = `메일을 열었습니다: ${item.name}`;
   } catch (error) {
     hintEl.classList.add("warn");
-    hintEl.textContent = `메일을 열지 못했습니다: ${String(error.message || error).replace(/^Error invoking remote method '[^']+': /, "")}`;
+    hintEl.textContent = `메일을 열지 못했습니다: ${String(error.message || error).replace(/^Error invoking remote method '[^']+': (Error: )?/, "")}`;
   }
 }
 
@@ -675,7 +686,7 @@ document.querySelector("#mailTest").addEventListener("click", async () => {
     const result = await window.findInside.testMail(formAccount(), mailForm.elements.password.value);
     mailTestResult.textContent = `✔ 연결 성공 — 폴더 ${result.folders}개, 받은편지함 메일 ${result.inboxMessages.toLocaleString()}통`;
   } catch (error) {
-    mailTestResult.textContent = `✖ 연결 실패: ${String(error.message || error).replace(/^Error invoking remote method '[^']+': /, "")}`;
+    mailTestResult.textContent = `✖ 연결 실패: ${String(error.message || error).replace(/^Error invoking remote method '[^']+': (Error: )?/, "")}`;
   }
 });
 

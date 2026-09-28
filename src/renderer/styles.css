@@ -124,3 +124,6 @@ header { max-width: 900px; margin: 0 auto; }
 .mailDialog summary { cursor: pointer; color: #91a7ff; font-size: 13px; }
 .mailDialog #mailPresetNote { margin: 8px 0 0; }
 .syncMail[hidden] { display: none; }
+.mailCardActions { display: flex; gap: 6px; }
+.mailDialog .mailCheck input { width: auto; flex: none; margin: 0; }
+.mailDialog .mailCheck { justify-content: flex-start; }

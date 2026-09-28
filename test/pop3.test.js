@@ -85,3 +85,14 @@ test("POP3: 로그인 후 새 메일만 최신순으로 가져오고, 서버 메
     server.close();
   }
 });
+
+test("POP3: SMTP 같은 다른 서버에 연결하면 기다리지 않고 바로 알린다", async () => {
+  const server = net.createServer((socket) => socket.write("220 smtp.example.com ESMTP ready\r\n"));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const account = { id: "x", protocol: "pop3", host: "127.0.0.1", port: server.address().port, security: "none", user: "kim" };
+    await assert.rejects(pop3.testConnection(account, "pw"), /NOTPOP3/);
+  } finally {
+    server.close();
+  }
+});
