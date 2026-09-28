@@ -9,13 +9,55 @@
     "test": "node --test",
     "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js && node --check src/tokens.js && node --check src/hanja.js && node --check src/ocrLoose.js && node --check src/extract.js && node --check src/ocr.js && node --check src/contentIndex.js && node --check src/contentWorker.js && node --check src/searchWorker.js && node --check src/renderer/highlight.js && node --check src/renderer/renderer.js",
     "setup:ocr": "powershell -ExecutionPolicy Bypass -File scripts/setup-ocr.ps1",
-    "qa:ocr": "node scripts/qa-ocr.js"
+    "qa:ocr": "node scripts/qa-ocr.js",
+    "dist": "electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
-    "electron": "^38.1.2"
+    "electron": "^38.1.2",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "cfb": "^1.2.2",
     "pdfjs-dist": "^6.3.289"
+  },
+  "productName": "FindInside",
+  "author": "kimheunghan",
+  "build": {
+    "appId": "com.kimheunghan.findinside",
+    "productName": "FindInside",
+    "copyright": "Copyright © 2026 kimheunghan",
+    "directories": {
+      "output": "dist"
+    },
+    "asar": false,
+    "files": [
+      "src/**/*",
+      "scripts/winocr.ps1",
+      "package.json",
+      "!**/*.test.js"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "FindInside",
+      "artifactName": "Find_Setup.${ext}",
+      "installerLanguages": [
+        "ko_KR"
+      ],
+      "language": "1042"
+    }
   }
 }
