@@ -273,6 +273,9 @@ let preciseWorker = null;
 
 function startPreciseOcr(images) {
   preciseWorker?.terminate();
+  // 정밀 판독(PaddleOCR)은 한 장에 수십 초, 메모리 1GB 안팎을 써서 PC 전체가 느려진다.
+  // 기본으로 끄고, FINDINSIDE_PRECISE_OCR=1일 때만 돌린다.
+  if (process.env.FINDINSIDE_PRECISE_OCR !== "1") return;
   const targets = preciseTargets(images);
   if (!targets.length) return;
   const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "ocr-precise" } });

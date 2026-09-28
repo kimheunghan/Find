@@ -1,5 +1,6 @@
 "use strict";
 
+const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
@@ -102,6 +103,12 @@ function engine(name) {
   let state = engines.get(name);
   if (state?.process && !state.process.killed) return state;
   state = { process: spawnEngine(name), pending: new Map(), nextId: 1, stdout: "", stderr: "" };
+  // OCR은 CPU를 오래 쓰므로 낮은 우선순위로 돌려, 검색·화면 조작이 먼저 처리되게 한다.
+  try {
+    os.setPriority(state.process.pid, os.constants.priority.PRIORITY_LOW);
+  } catch {
+    // 우선순위를 못 바꾸면 그대로 돈다
+  }
   engines.set(name, state);
   const failAll = (error) => {
     for (const request of state.pending.values()) {
