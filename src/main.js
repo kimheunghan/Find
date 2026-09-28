@@ -115,8 +115,30 @@ let searchReady;
 let nextRequest = 1;
 const pendingRequests = new Map();
 
+// 검색 worker가 예상 못한 오류로 멈추면 기다리던 검색을 실패로 알리고 다시 띄운다 (1분에 3번까지)
+let appQuitting = false;
+app.on("before-quit", () => { appQuitting = true; });
+const searchRestarts = [];
+
+function restartSearchWorker(reason) {
+  for (const request of pendingRequests.values()) request.reject(new Error(`검색 엔진이 중단되어 다시 시작합니다. 잠시 뒤 다시 검색하세요. (${reason})`));
+  pendingRequests.clear();
+  if (appQuitting) return;
+  const now = Date.now();
+  while (searchRestarts.length && now - searchRestarts[0] > 60_000) searchRestarts.shift();
+  if (searchRestarts.length >= 3) return;
+  searchRestarts.push(now);
+  startSearchWorker();
+  searchReady = reloadIndex().catch(() => meta);
+}
+
 function startSearchWorker() {
   searchWorker = new Worker(path.join(__dirname, "searchWorker.js"), { workerData: { dbPath: contentDbPath(), indexPath: indexFile(), deltaPath: deltaFile() } });
+  const worker = searchWorker;
+  worker.on("error", (error) => console.error("search worker", error));
+  worker.on("exit", (code) => {
+    if (worker === searchWorker) restartSearchWorker(`종료 코드 ${code}`);
+  });
   searchWorker.on("message", ({ id, result, error }) => {
     const request = pendingRequests.get(id);
     if (!request) return;

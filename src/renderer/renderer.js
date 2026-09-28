@@ -381,24 +381,79 @@ async function runSearch() {
   let result = { items: [], total: 0 };
   let failed = null;
   if (query) {
+    const stopLoading = showLoading(sequence);
     try {
       result = await window.findInside.search(query, { ...filters, source, sort: sortEl.value });
     } catch (error) {
       failed = error;
+    } finally {
+      stopLoading();
     }
   }
   if (sequence !== searchSequence) return;
   const { items, total } = result;
-  // 검색이 실패하면 이전 화면을 그대로 두지 않고 이유를 알린다.
+  // 검색이 실패하면 이전 화면을 그대로 두지 않고 이유와 다시 검색 버튼을 보여 준다.
   if (failed) {
-    renderResults([]);
-    resultsEl.querySelector(".empty").textContent = `검색 중 오류가 났습니다. 잠시 뒤 다시 시도하세요. (${String(failed.message || failed).replace(/^Error invoking remote method '[^']+': (Error: )?/, "")})`;
+    showSearchFailure(String(failed.message || failed).replace(/^Error invoking remote method '[^']+': (Error: )?/, ""));
     resultsEl.dataset.query = query;
     return;
   }
   renderResults(items, total);
   renderSourceCounts(query ? result : null);
   resultsEl.dataset.query = query;
+}
+
+// ---- 검색 중 표시 ----
+// 0.2초 안에 끝나면 아무것도 보이지 않게 두고, 늦어지면 "검색 중"과 걸린 시간을 보여 준다.
+// 오래 걸리면 이유를 짐작할 수 있게 알리고, 60초가 지나면 응답이 없다고 알린다 (늦게라도 오면 그때 그린다).
+const SEARCH_SLOW_MS = 10_000;
+const SEARCH_GIVE_UP_MS = 60_000;
+
+function showLoading(sequence) {
+  const started = Date.now();
+  let timer = null;
+  const tick = () => {
+    if (sequence !== searchSequence) return;
+    const elapsed = Date.now() - started;
+    resultsEl.classList.add("busy");
+    let box = resultsEl.querySelector(".loading");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "loading";
+      box.innerHTML = '<span class="spinner" aria-hidden="true"></span><span class="loadingText"></span>';
+      box.setAttribute("role", "status");
+      resultsEl.prepend(box);
+    }
+    const seconds = Math.floor(elapsed / 1000);
+    const text = elapsed >= SEARCH_GIVE_UP_MS
+      ? `${seconds}초째 응답이 없습니다. 색인 작업이 무거워 늦어질 수 있습니다. 결과가 오면 바로 보여 드립니다. 계속 안 되면 앱을 다시 켜 주세요.`
+      : elapsed >= SEARCH_SLOW_MS
+        ? `검색 중… ${seconds}초 — 파일 목록을 불러오는 중이거나 조건에 맞는 항목이 많으면 오래 걸릴 수 있습니다.${workText() ? ` (진행 중: ${workText()})` : ""}`
+        : `검색 중…${seconds ? ` ${seconds}초` : ""}`;
+    box.querySelector(".loadingText").textContent = text;
+    timer = setTimeout(tick, 1000);
+  };
+  timer = setTimeout(tick, 200);
+  return () => {
+    clearTimeout(timer);
+    if (sequence !== searchSequence) return;
+    resultsEl.classList.remove("busy");
+    resultsEl.querySelector(".loading")?.remove();
+  };
+}
+
+function showSearchFailure(reason) {
+  renderResults([]);
+  countEl.textContent = "–";
+  const empty = resultsEl.querySelector(".empty");
+  empty.classList.add("failed");
+  empty.textContent = `검색 결과를 가져오지 못했습니다. 이유: ${reason}`;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "secondary retry";
+  retry.textContent = "다시 검색";
+  retry.addEventListener("click", runSearch);
+  empty.append(document.createElement("br"), retry);
 }
 
 // ---- 정렬 (관련도순 · 최신순). 고른 값은 다음 실행에도 쓴다 ----
@@ -883,7 +938,7 @@ function refreshWorkHint() {
   const query = queryEl.value.trim();
   if (query && !hintEl.classList.contains("warn")) hintEl.textContent = `${describeSearch(query)}${workText() ? ` · 진행 중: ${workText()}` : ""}`;
   const empty = resultsEl.querySelector(".empty");
-  if (empty && query && resultsEl.dataset.query === query && !empty.textContent.startsWith("검색 중 오류")) empty.textContent = emptyMessage();
+  if (empty && query && resultsEl.dataset.query === query && !empty.classList.contains("failed")) empty.textContent = emptyMessage();
 }
 
 let lastProgressSearch = 0;
