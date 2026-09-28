@@ -11,7 +11,7 @@ const { saveMail, removeMailFolder } = require("./contentIndex");
 
 const BATCH = 20;
 
-function client(account, password) {
+function client(account, password, loginMethod) {
   const security = account.security || "ssl";
   return new ImapFlow({
     host: account.host,
@@ -19,7 +19,7 @@ function client(account, password) {
     secure: security === "ssl",
     // STARTTLS: 평문으로 접속한 뒤 암호화로 바꾼다. "없음"이면 암호화하지 않는다 (화면에서 경고함).
     doSTARTTLS: security === "starttls" ? true : security === "none" ? false : undefined,
-    auth: { user: account.user, pass: password },
+    auth: loginMethod ? { user: account.user, pass: password, loginMethod } : { user: account.user, pass: password },
     logger: false,
     // 사내 메일 서버의 자체 서명 인증서도 접속할 수 있게 한다 (사용자가 직접 입력한 서버)
     tls: { rejectUnauthorized: account.allowSelfSigned === true ? false : true },
@@ -27,11 +27,26 @@ function client(account, password) {
   });
 }
 
+// 접속하고 로그인한다. 일부 서버(예: 메일플러그)는 AUTHENTICATE PLAIN을 지원한다고 알리고도
+// "invalid command"로 거부하므로, 그때는 기본 LOGIN 명령으로 다시 시도한다.
+async function connect(account, password, createClient = client) {
+  const imap = createClient(account, password);
+  try {
+    await imap.connect();
+    return imap;
+  } catch (error) {
+    const rejectedMethod = error.responseStatus === "BAD" || /invalid command/i.test(error.responseText || error.message || "");
+    if (!rejectedMethod || createClient !== client) throw error;
+    const retry = client(account, password, "LOGIN");
+    await retry.connect();
+    return retry;
+  }
+}
+
 const mailPath = (account, folder, uidValidity, uid) => `imap://${account.id}/${encodeURIComponent(folder)}/${uidValidity}/${uid}`;
 
 async function testConnection(account, password) {
-  const imap = client(account, password);
-  await imap.connect();
+  const imap = await connect(account, password);
   try {
     const folders = await imap.list();
     const inbox = await imap.status("INBOX", { messages: true });
@@ -45,8 +60,7 @@ async function testConnection(account, password) {
 // options.createClient: 테스트에서 가짜 IMAP 접속을 넣을 때 쓴다.
 async function syncAccount(db, account, password, options = {}) {
   const onProgress = options.onProgress || (() => {});
-  const imap = (options.createClient || client)(account, password);
-  await imap.connect();
+  const imap = await connect(account, password, options.createClient || client);
   const summary = { folders: 0, fetched: 0, errors: 0 };
   try {
     const folders = (await imap.list()).filter((folder) => !folder.flags?.has("\\Noselect"));
@@ -105,8 +119,7 @@ async function syncAccount(db, account, password, options = {}) {
 
 // 메일 하나의 원문을 서버에서 받는다 (열기용).
 async function fetchSource(account, password, folder, uid) {
-  const imap = client(account, password);
-  await imap.connect();
+  const imap = await connect(account, password);
   try {
     const lock = await imap.getMailboxLock(folder, { readOnly: true });
     try {

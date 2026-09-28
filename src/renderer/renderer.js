@@ -589,7 +589,22 @@ function applyPreset() {
   document.querySelector("#mailNoTls").hidden = true;
 }
 
+function renderConnectionSummary() {
+  let summary = document.querySelector("#mailConnectionSummary");
+  if (!summary) {
+    summary = document.createElement("p");
+    summary.id = "mailConnectionSummary";
+    summary.className = "filterHelp";
+    document.querySelector("#mailPresetNote").after(summary);
+  }
+  const { protocol, host, port, security } = mailForm.elements;
+  const securityText = { ssl: "SSL", starttls: "STARTTLS", none: "암호화 안 함" }[security.value];
+  summary.textContent = host.value ? `연결: ${protocol.value.toUpperCase()} ${host.value} · 포트 ${port.value} · ${securityText} (고급 설정에서 바꿀 수 있음)` : "";
+}
+
 mailForm.elements.preset.addEventListener("change", applyPreset);
+mailForm.addEventListener("input", renderConnectionSummary);
+mailForm.addEventListener("change", renderConnectionSummary);
 
 // 아이디는 보통 메일 주소 전체라서, 이메일을 넣으면 아이디 칸을 채운다
 let lastEmail = "";
@@ -632,6 +647,7 @@ function openMailDialog(account = null, protocol = "imap") {
   } else {
     applyPreset(); // 새 계정은 첫 번째 서비스(메일플러그) 값으로 채워 둔다
   }
+  renderConnectionSummary();
   mailTestResult.textContent = "";
   document.querySelector("#mailNoTls").hidden = mailForm.elements.security.value !== "none";
   mailDialog.showModal();
