@@ -574,7 +574,7 @@ function formAccount() {
 // 메일 서비스별 서버 정보. 고르면 서버·포트·보안 방식을 채운다 (사용자가 바꿀 수 있음).
 // 서비스마다 IMAP/POP3 사용 설정을 켜고 "앱 비밀번호"를 따로 만들어야 하는 경우가 많다.
 const MAIL_PRESETS = {
-  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], note: "비밀번호는 메일플러그의 앱 비밀번호를 넣으세요." },
+  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], pop3: ["pop3.mailplug.co.kr", 995, "ssl"], note: "비밀번호는 메일플러그의 앱 비밀번호를 넣으세요." },
   naver: { imap: ["imap.naver.com", 993, "ssl"], pop3: ["pop.naver.com", 995, "ssl"], note: "네이버 메일 설정에서 IMAP 사용을 켜 주세요." },
   daum: { imap: ["imap.daum.net", 993, "ssl"], pop3: ["pop.daum.net", 995, "ssl"], note: "다음 메일 설정에서 IMAP 사용을 켜 주세요." },
   gmail: { imap: ["imap.gmail.com", 993, "ssl"], pop3: ["pop.gmail.com", 995, "ssl"], note: "비밀번호는 Google 앱 비밀번호(16자리)를 넣으세요." },
