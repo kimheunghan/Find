@@ -42,32 +42,40 @@
           <div id="filterChips" class="chips"></div>
           <button id="clearFilters" type="button" class="linkButton" hidden>조건 초기화</button>
         </div>
-        <div id="filterPanel" class="filterPanel" hidden>
+      </header>
+
+      <div id="filterPanel" class="filterPanel" hidden>
           <div class="filterRow">
             <h3>검색 범위</h3>
             <div>
-              <div id="scopeOptions" class="optionButtons"></div>
-              <button id="addScope" type="button" class="optionButton">폴더 선택…</button>
+              <div class="scopeControls">
+                <div id="scopeOptions" class="optionButtons"></div>
+                <button id="addScope" type="button" class="optionButton">폴더 선택…</button>
+              </div>
               <p class="filterHelp">선택한 드라이브나 폴더 안의 항목만 검색합니다. 여러 개를 고르면 그중 한 곳에만 있어도 결과에 나옵니다.</p>
             </div>
           </div>
           <div class="filterRow">
-            <h3>종류</h3>
-            <div class="optionButtons" role="radiogroup" aria-label="종류">
-              <label><input type="radio" name="kind" value="all" checked /> 전체</label>
-              <label><input type="radio" name="kind" value="file" /> 파일만</label>
-              <label><input type="radio" name="kind" value="folder" /> 폴더만</label>
-            </div>
-          </div>
-          <div class="filterRow">
             <h3>확장자</h3>
-            <div>
-              <div id="extensionOptions" class="optionButtons"></div>
+            <div class="extensionControls">
+              <select id="extensionSelect" class="extensionSelect" aria-label="파일 형식">
+                <option value="">전체 파일 형식</option>
+                <option value="hwp">HWP</option>
+                <option value="hwpx">HWPX</option>
+                <option value="doc">DOC</option>
+                <option value="docx">DOCX</option>
+                <option value="xls">XLS</option>
+                <option value="xlsx">XLSX</option>
+                <option value="ppt">PPT</option>
+                <option value="pptx">PPTX</option>
+                <option value="pdf">PDF</option>
+                <option value="txt">TXT</option>
+                <option value="csv">CSV</option>
+              </select>
               <input id="extensionInput" class="extensionInput" type="text" placeholder="직접 입력 (예: hwp, xlsx)" autocomplete="off" />
             </div>
           </div>
-        </div>
-      </header>
+      </div>
 
       <section class="summary">
         <div><strong id="resultCount">0</strong><span>검색 결과</span></div>

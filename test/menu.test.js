@@ -22,3 +22,12 @@ test("Electron 기본 메뉴를 숨기고 앱 내부 한국어 메뉴를 사용�
     assert.match(html, new RegExp(`>${label}<`));
   }
 });
+
+test("상세 조건 내부 조작은 패널을 닫지 않고 선택 범위는 x로만 제거한다", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../src/renderer/renderer.js"), "utf8");
+  assert.match(source, /event\.composedPath\(\)/);
+  assert.match(source, /path\.includes\(filterPanelEl\)/);
+  assert.match(source, /path\.includes\(filterBarEl\)/);
+  assert.match(source, /검색 범위에서 제거/);
+  assert.match(source, /event\.stopPropagation\(\)/);
+});

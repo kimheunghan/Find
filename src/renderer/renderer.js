@@ -10,13 +10,12 @@ const hintEl = document.querySelector("#hint");
 const template = document.querySelector("#resultTemplate");
 const filterPanelEl = document.querySelector("#filterPanel");
 const filterToggleEl = document.querySelector("#toggleFilters");
+const filterBarEl = document.querySelector(".filterBar");
 const filterChipsEl = document.querySelector("#filterChips");
 const clearFiltersEl = document.querySelector("#clearFilters");
 const scopeOptionsEl = document.querySelector("#scopeOptions");
-const extensionOptionsEl = document.querySelector("#extensionOptions");
+const extensionSelectEl = document.querySelector("#extensionSelect");
 const extensionInputEl = document.querySelector("#extensionInput");
-const COMMON_EXTENSIONS = ["hwp", "hwpx", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf", "txt", "csv"];
-const KIND_LABELS = { file: "파일만", folder: "폴더만" };
 let roots = [];
 let excludedPaths = [];
 let timer;
@@ -205,7 +204,7 @@ function isIndexedScope(scope) {
 }
 
 function hasFilters() {
-  return filters.scopes.length > 0 || filters.kind !== "all" || filters.extensions.length > 0;
+  return filters.scopes.length > 0 || filters.extensions.length > 0;
 }
 
 function toggleScope(scope) {
@@ -254,26 +253,35 @@ function chip(label, onRemove) {
   return item;
 }
 
-function renderFilters() {
-  scopeOptionsEl.replaceChildren(...scopeCandidates().map((scope) => optionButton(
-    scope,
-    filters.scopes.some((item) => samePath(item, scope)),
-    () => toggleScope(scope)
-  )));
+function scopeControl(scope) {
+  const selected = filters.scopes.some((item) => samePath(item, scope));
+  if (!selected) return optionButton(scope, false, () => toggleScope(scope));
 
-  const extensionChoices = [...new Set([...COMMON_EXTENSIONS, ...filters.extensions])];
-  extensionOptionsEl.replaceChildren(...extensionChoices.map((extension) => optionButton(
-    extension.toUpperCase(),
-    filters.extensions.includes(extension),
-    () => toggleExtension(extension)
-  )));
+  const item = document.createElement("span");
+  item.className = "scopeOption selected";
+  item.title = scope;
+  const label = document.createElement("span");
+  label.textContent = scope;
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.title = `${scope} 검색 범위에서 제거`;
+  remove.setAttribute("aria-label", remove.title);
+  remove.textContent = "×";
+  remove.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleScope(scope);
+  });
+  item.append(label, remove);
+  return item;
+}
+
+function renderFilters() {
+  scopeOptionsEl.replaceChildren(...scopeCandidates().map(scopeControl));
+
+  extensionSelectEl.value = filters.extensions.length === 1 ? filters.extensions[0] : "";
   if (document.activeElement !== extensionInputEl) extensionInputEl.value = filters.extensions.join(", ");
-  document.querySelectorAll('input[name="kind"]').forEach((input) => { input.checked = input.value === filters.kind; });
 
   const chips = filters.scopes.map((scope) => chip(`범위: ${scope}`, () => toggleScope(scope)));
-  if (filters.kind !== "all") {
-    chips.push(chip(KIND_LABELS[filters.kind], () => { filters.kind = "all"; onFiltersChanged(); }));
-  }
   for (const extension of filters.extensions) {
     chips.push(chip(extension.toUpperCase(), () => toggleExtension(extension)));
   }
@@ -285,7 +293,6 @@ function renderFilters() {
 function describeSearch(query) {
   const parts = [];
   parts.push(filters.scopes.length ? filters.scopes.join(", ") : "전체 검색 위치");
-  if (filters.kind !== "all") parts.push(KIND_LABELS[filters.kind]);
   if (filters.extensions.length) parts.push(filters.extensions.map((item) => item.toUpperCase()).join("·"));
   return `“${query}” · ${parts.join(" · ")}`;
 }
@@ -331,7 +338,12 @@ function setFilterPanelOpen(open) {
 filterToggleEl.addEventListener("click", () => setFilterPanelOpen(filterPanelEl.hidden));
 
 document.addEventListener("click", (event) => {
-  if (!filterPanelEl.hidden && !event.target.closest("header")) setFilterPanelOpen(false);
+  const path = event.composedPath();
+  if (
+    !filterPanelEl.hidden
+    && !path.includes(filterPanelEl)
+    && !path.includes(filterBarEl)
+  ) setFilterPanelOpen(false);
 });
 
 document.addEventListener("keydown", (event) => {
@@ -353,11 +365,9 @@ document.querySelector("#addScope").addEventListener("click", async () => {
   onFiltersChanged();
 });
 
-document.querySelectorAll('input[name="kind"]').forEach((input) => {
-  input.addEventListener("change", () => {
-    filters.kind = input.value;
-    onFiltersChanged();
-  });
+extensionSelectEl.addEventListener("change", () => {
+  setExtensions(extensionSelectEl.value ? [extensionSelectEl.value] : []);
+  onFiltersChanged();
 });
 
 extensionInputEl.addEventListener("change", () => {
