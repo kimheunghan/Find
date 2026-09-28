@@ -13,7 +13,31 @@ const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "t
 const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, ...ZIP_EXTENSIONS, ...IMAGE_EXTENSIONS, "hwp", "pdf"]);
 // 형식별 추출 방식 버전. 올리면 그 형식의 파일만 백그라운드에서 다시 추출한다 (PDF·이미지 OCR은 다시 하지 않음).
 // 2: 실제 일치한 줄·칸 위치(marks), HWP·HWPX·DOCX 쪽 번호, PPTX 발표 순서·시작 번호
-const EXTRACTOR_VERSIONS = { txt: 2, csv: 2, md: 2, log: 2, docx: 2, xlsx: 2, pptx: 2, hwpx: 2, hwp: 2 };
+// 이미지: 2 = Windows OCR(작은 글씨 2배 확대) 빠른 판독, 3 = 빠른 판독 + PaddleOCR 정밀 판독 (PRECISE_OCR_VERSION)
+const EXTRACTOR_VERSIONS = {
+  txt: 2, csv: 2, md: 2, log: 2, docx: 2, xlsx: 2, pptx: 2, hwpx: 2, hwp: 2,
+  png: 2, jpg: 2, jpeg: 2, gif: 2, webp: 2, bmp: 2, tif: 2, tiff: 2
+};
+const PRECISE_OCR_VERSION = 3;
+
+// 정밀 판독: 두 OCR 엔진이 서로 다른 글자를 놓치므로(Windows는 작은 한글, PaddleOCR은 한자·일부 글자) 두 결과를 합친다.
+// 같은 줄은 한 번만 넣는다. 어느 한쪽이라도 맞게 읽으면 검색된다.
+async function extractImagePrecise(filePath) {
+  const results = await Promise.allSettled([extractImageText(filePath, "windows"), extractImageText(filePath, "paddle")]);
+  const ok = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
+  if (!ok.length) throw results[0].reason;
+  const seen = new Set();
+  const lines = [];
+  for (const chunks of ok) {
+    for (const chunk of chunks) {
+      const key = chunk.text.replace(/\s+/g, "");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(chunk.text);
+    }
+  }
+  return lines.map((text, index) => ({ location: { ocr: true, line: index + 1 }, text }));
+}
 
 // ---- 텍스트 파일 ----
 
@@ -563,11 +587,12 @@ async function extractPdf(buffer) {
   return chunks;
 }
 
-async function extractFile(filePath) {
+// options.preciseOcr: 이미지를 두 OCR 엔진으로 정밀 판독한다.
+async function extractFile(filePath, options = {}) {
   const extension = path.extname(filePath).slice(1).toLocaleLowerCase();
   if (!SUPPORTED_EXTENSIONS.has(extension)) return null;
   // 이미지는 Python OCR 프로세스가 직접 읽는다. 큰 이미지 전체를 Node 메모리에 중복 적재하지 않는다.
-  if (IMAGE_EXTENSIONS.has(extension)) return extractImageText(filePath);
+  if (IMAGE_EXTENSIONS.has(extension)) return options.preciseOcr ? extractImagePrecise(filePath) : extractImageText(filePath, "windows");
   const buffer = await fs.readFile(filePath);
   if (TEXT_EXTENSIONS.has(extension)) return extractPlainText(buffer);
   if (extension === "hwp") return extractHwp(buffer);
@@ -593,4 +618,4 @@ function describeLocation(location) {
   return "";
 }
 
-module.exports = { MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };
+module.exports = { MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, PRECISE_OCR_VERSION, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };

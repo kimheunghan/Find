@@ -56,11 +56,15 @@ def main():
     # 문서 펴기(왜곡 보정)·방향 판별은 한 장에 20초 넘게 걸려 기본으로 끈다.
     # 사진으로 찍은 문서가 많으면 FINDINSIDE_OCR_ACCURATE=1 로 켤 수 있다.
     accurate = os.environ.get("FINDINSIDE_OCR_ACCURATE") == "1"
+    # 큰 사진(수천만 화소)을 원본 크기로 검출하면 한 장에 몇 분이 걸린다. 긴 변을 1600px로 맞춰 검출한다.
+    # (화면 캡처는 대부분 이보다 작아 그대로 읽는다.)
     ocr = PaddleOCR(
         lang="korean",
         use_doc_orientation_classify=accurate,
         use_doc_unwarping=accurate,
         use_textline_orientation=accurate,
+        text_det_limit_type="max",
+        text_det_limit_side_len=int(os.environ.get("FINDINSIDE_OCR_MAX_SIDE", "1600")),
     )
     for line in sys.stdin:
         try:

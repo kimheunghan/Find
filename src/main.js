@@ -254,8 +254,44 @@ function contentTargets(entries, group) {
 
 let ocrWorker = null;
 
+// 정밀 판독 대상: 사용자 폴더(그림·바탕 화면·문서·다운로드)의 이미지. 한 장에 10~40초라 전체가 아니라 여기만 한다.
+function preciseTargets(images) {
+  const folders = ["pictures", "desktop", "documents", "downloads"].map((name) => {
+    try {
+      return path.resolve(app.getPath(name)).toLocaleLowerCase();
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
+  return images.filter((entry) => {
+    const lower = entry.path.toLocaleLowerCase();
+    return folders.some((folder) => lower.startsWith(`${folder}\\`));
+  });
+}
+
+let preciseWorker = null;
+
+function startPreciseOcr(images) {
+  preciseWorker?.terminate();
+  const targets = preciseTargets(images);
+  if (!targets.length) return;
+  const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "ocr-precise" } });
+  preciseWorker = worker;
+  worker.on("message", (message) => {
+    if (message.type === "progress") window?.webContents.send("index:progress", { phase: "ocr-precise", ...message.progress });
+    else if (message.type === "done" || message.type === "error") {
+      window?.webContents.send("index:progress", { phase: "ocr-precise", done: targets.length, total: targets.length, finished: true, error: message.message });
+      worker.terminate();
+    }
+  });
+  worker.on("exit", () => { if (preciseWorker === worker) preciseWorker = null; });
+  worker.postMessage({ type: "index", entries: targets });
+}
+
 function startOcr(targets) {
   ocrWorker?.terminate();
+  // 정밀 판독은 빠른 판독이 끝나기를 기다리지 않고 함께 돌린다 (둘 다 최신 이미지부터, 빠른 판독이 앞서 간다).
+  startPreciseOcr(targets);
   const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "images" } });
   ocrWorker = worker;
   worker.on("message", (message) => {

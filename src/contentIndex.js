@@ -93,10 +93,10 @@ function extractorVersion(filePath) {
   return EXTRACTOR_VERSIONS[path.extname(filePath).slice(1).toLowerCase()] || 1;
 }
 
-function saveFile(db, filePath, stat, status, chunks, error) {
+function saveFile(db, filePath, stat, status, chunks, error, extractorOverride) {
   transaction(db, () => {
     const existing = db.prepare("SELECT id FROM files WHERE path = ?").get(filePath);
-    const extractor = extractorVersion(filePath);
+    const extractor = extractorOverride || extractorVersion(filePath);
     let fileId;
     if (existing) {
       fileId = existing.id;
@@ -170,7 +170,7 @@ async function indexContent(db, entries, options = {}) {
     const previous = db.prepare("SELECT size, modified_at, status, extractor FROM files WHERE path = ?").get(entry.path);
     const unchanged = previous && previous.size === stat.size && previous.modified_at === Math.trunc(stat.mtimeMs);
     // 추출 방식이 바뀐 형식은 파일이 그대로여도 다시 추출한다 (예전 행은 extractor가 비어 있어 1로 본다).
-    const sameExtractor = previous && (previous.extractor || 1) >= extractorVersion(entry.path);
+    const sameExtractor = previous && (previous.extractor || 1) >= (options.extractor || extractorVersion(entry.path));
     if (unchanged && sameExtractor && previous.status !== "error") {
       summary.skipped += 1;
     } else if (stat.size === 0) {
@@ -186,13 +186,13 @@ async function indexContent(db, entries, options = {}) {
       let chunks = null;
       let failure = null;
       try {
-        chunks = await extractFile(entry.path) || [];
+        chunks = await extractFile(entry.path, options.extractOptions) || [];
       } catch (error) {
         failure = error;
       }
       const saved = failure
         ? await safeSave(db, entry.path, stat, "error", [], failure.message)
-        : await safeSave(db, entry.path, stat, "done", chunks);
+        : await safeSave(db, entry.path, stat, "done", chunks, undefined, options.extractor);
       if (failure || !saved) summary.errors += 1;
       else summary.extracted += 1;
     }

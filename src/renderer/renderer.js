@@ -496,10 +496,11 @@ function showIndexDone(result) {
 let ocrStatus = "";
 
 window.findInside.onIndexProgress((progress) => {
-  if (progress.phase === "ocr") {
+  if (progress.phase === "ocr" || progress.phase === "ocr-precise") {
+    const label = progress.phase === "ocr" ? "이미지 OCR" : "이미지 OCR 정밀 판독";
     ocrStatus = progress.finished
-      ? (progress.error ? `이미지 OCR 중단: ${progress.error}` : "이미지 OCR 완료")
-      : `이미지 OCR 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`;
+      ? (progress.error ? `${label} 중단: ${progress.error}` : `${label} 완료`)
+      : `${label} 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`;
     const lines = statusEl.textContent.split("\n").filter((line) => !line.startsWith("이미지 OCR"));
     statusEl.textContent = [...lines, ocrStatus].join("\n");
     return;
