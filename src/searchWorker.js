@@ -63,6 +63,8 @@ function fileTime(entry) {
   }
   return time;
 }
+// 하루 넘게 미래인 날짜(잘못 적힌 파일 날짜)는 최신순에서 날짜 모름으로
+const sortTime = (item) => (item.time > Date.now() + 86_400_000 ? 0 : item.time || 0);
 const mailTime = (entry) => Date.parse(entry.date || "") || 0;
 
 parentPort.on("message", ({ id, type, query, filters }) => {
@@ -87,7 +89,7 @@ parentPort.on("message", ({ id, type, query, filters }) => {
       const pc = source === "mail" ? [] : searchEntries(entries, query, filters || {}, 200, contentMatches, pcStats, fileTime);
       const mail = source === "pc" ? [] : searchEntries(mails, query, { sort }, 200, contentMatches, mailStats, mailTime);
       const items = [...pc, ...mail]
-        .sort(sort === "newest" ? (a, b) => (b.time || 0) - (a.time || 0) || b.score - a.score : (a, b) => b.score - a.score)
+        .sort(sort === "newest" ? (a, b) => sortTime(b) - sortTime(a) || b.score - a.score : (a, b) => b.score - a.score)
         .slice(0, 200);
       parentPort.postMessage({ id, result: { items, total: (pcStats.total || 0) + (mailStats.total || 0), pcTotal: pcStats.total || 0, mailTotal: mailStats.total || 0 } });
     }

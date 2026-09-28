@@ -67,3 +67,15 @@ test("검색 결과: 최신순이면 날짜가 최근인 것부터, 관련도순
   const newest = searchEntries(entries, "보고서", { sort: "newest" }, 10, new Map(), {}, dateOf);
   assert.deepEqual(newest.map((item) => item.time), [5000, 1000]);
 });
+
+test("최신순: 미래로 잘못 적힌 날짜는 맨 위로 올리지 않는다", () => {
+  const { searchEntries } = require("../src/search");
+  const entries = [
+    { name: "계획.hwp", path: "C:\계획.hwp", kind: "file", extension: "hwp" },
+    { name: "계획_이상.hwp", path: "C:\계획_이상.hwp", kind: "file", extension: "hwp" }
+  ];
+  const times = { "C:\계획.hwp": Date.now() - 1000, "C:\계획_이상.hwp": Date.UTC(2069, 0, 1) };
+  const newest = searchEntries(entries, "계획", { sort: "newest" }, 10, new Map(), {}, (entry) => times[entry.path]);
+  assert.equal(newest[0].name, "계획.hwp");
+  assert.equal(newest[1].time, Date.UTC(2069, 0, 1), "표시용 날짜는 그대로");
+});

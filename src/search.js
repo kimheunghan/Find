@@ -140,7 +140,10 @@ function searchEntries(entries, query, filters = {}, limit = 200, contentMatches
   if (filters.sort === "newest" && dateOf) {
     ordered = found.slice(0, NEWEST_CANDIDATES);
     for (const item of ordered) item.time = dateOf(item.entry) || 0;
-    ordered.sort((a, b) => b.time - a.time || b.result.score - a.result.score);
+    // 날짜가 잘못 적힌 파일(예: 2069년)이 맨 위를 차지하지 않게, 하루 넘게 미래인 날짜는 날짜 모름으로 정렬한다
+    const latest = Date.now() + 86_400_000;
+    const sortTime = (item) => (item.time > latest ? 0 : item.time);
+    ordered.sort((a, b) => sortTime(b) - sortTime(a) || b.result.score - a.result.score);
   }
   // 보여 줄 결과에는 정렬과 관계없이 날짜를 붙인다 (같은 이름의 파일을 구분할 수 있게)
   return ordered
