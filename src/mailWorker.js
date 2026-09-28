@@ -21,7 +21,7 @@ function friendlyError(error) {
   if (/ENOTFOUND|EAI_AGAIN/.test(text)) return "서버 주소를 찾을 수 없습니다. IMAP 서버 이름을 확인하세요.";
   if (/ECONNREFUSED/.test(text)) return "서버가 연결을 거부했습니다. 포트와 보안 방식을 확인하세요.";
   if (/ETIMEDOUT|timeout|Timeout/.test(text)) return "서버 응답이 없습니다. 포트·보안 방식이나 회사 방화벽을 확인하세요.";
-  if (/AUTHENTICATIONFAILED|Invalid credentials|authentication failed|LOGIN failed|auth|password|5\.7\.\d/i.test(text)) return "로그인에 실패했습니다. 아이디·비밀번호를 확인하세요. (앱 비밀번호가 필요한 서비스도 있습니다)";
+  if (/AUTHENTICATIONFAILED|Invalid credentials|authentication failed|LOGIN failed|auth|password|5\.7\.\d/i.test(text)) return "로그인에 실패했습니다. 아이디와 앱 비밀번호를 확인하세요. (로그인 비밀번호가 아니라 메일 서비스에서 발급받은 앱 비밀번호가 필요합니다)";
   if (/certificate|self.signed|CERT_|UNABLE_TO_VERIFY/i.test(text)) return "서버 인증서를 확인할 수 없습니다. 사내 서버라면 '자체 서명 인증서 허용'을 켜세요.";
   if (/wrong version number|EPROTO|ssl3_get_record/i.test(text)) return "보안 방식이 서버와 맞지 않습니다. SSL/TLS와 STARTTLS를 바꿔 보세요.";
   return error.responseText || error.message || String(error);

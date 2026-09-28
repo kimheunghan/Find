@@ -357,6 +357,7 @@ function renderFilters() {
 }
 
 function describeSearch(query) {
+  if (source === "mail") return `“${query}” · 연결한 메일 (제목·보낸 사람·받는 사람·본문·첨부)`;
   const parts = [];
   parts.push(filters.scopes.length ? filters.scopes.join(", ") : "전체 검색 위치");
   if (filters.extensions.length) parts.push(filters.extensions.map((item) => item.toUpperCase()).join("·"));
@@ -574,11 +575,11 @@ function formAccount() {
 // 메일 서비스별 서버 정보. 고르면 서버·포트·보안 방식을 채운다 (사용자가 바꿀 수 있음).
 // 서비스마다 IMAP/POP3 사용 설정을 켜고 "앱 비밀번호"를 따로 만들어야 하는 경우가 많다.
 const MAIL_PRESETS = {
-  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], pop3: ["pop3.mailplug.co.kr", 995, "ssl"], note: "비밀번호는 메일플러그의 앱 비밀번호를 넣으세요." },
-  naver: { imap: ["imap.naver.com", 993, "ssl"], pop3: ["pop.naver.com", 995, "ssl"], note: "네이버 메일 설정에서 IMAP 사용을 켜 주세요." },
+  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], pop3: ["pop3.mailplug.co.kr", 995, "ssl"], note: "로그인 비밀번호가 아니라 메일플러그 환경설정에서 발급받은 앱 비밀번호를 넣으세요." },
+  naver: { imap: ["imap.naver.com", 993, "ssl"], pop3: ["pop.naver.com", 995, "ssl"], note: "네이버 메일 설정에서 IMAP 사용을 켜 주세요. 2단계 인증을 쓰면 앱 비밀번호를 넣으세요." },
   daum: { imap: ["imap.daum.net", 993, "ssl"], pop3: ["pop.daum.net", 995, "ssl"], note: "다음 메일 설정에서 IMAP 사용을 켜 주세요." },
-  gmail: { imap: ["imap.gmail.com", 993, "ssl"], pop3: ["pop.gmail.com", 995, "ssl"], note: "비밀번호는 Google 앱 비밀번호(16자리)를 넣으세요." },
-  outlook: { imap: ["outlook.office365.com", 993, "ssl"], pop3: ["outlook.office365.com", 995, "ssl"], note: "비밀번호는 앱 비밀번호가 필요할 수 있습니다." }
+  gmail: { imap: ["imap.gmail.com", 993, "ssl"], pop3: ["pop.gmail.com", 995, "ssl"], note: "로그인 비밀번호가 아니라 Google 계정에서 만든 앱 비밀번호(16자리)를 넣으세요." },
+  outlook: { imap: ["outlook.office365.com", 993, "ssl"], pop3: ["outlook.office365.com", 995, "ssl"], note: "2단계 인증을 쓰면 로그인 비밀번호 대신 앱 비밀번호를 넣으세요." }
 };
 
 function applyPreset() {
@@ -648,7 +649,7 @@ function openMailDialog(account = null, protocol = "imap") {
     if (field.type === "checkbox") field.checked = Boolean(value);
     else field.value = value ?? "";
   }
-  mailForm.elements.password.placeholder = account ? "바꾸지 않으려면 비워 두세요" : "";
+  mailForm.elements.password.placeholder = account ? "바꾸지 않으려면 비워 두세요" : "메일 서비스에서 발급받은 앱 비밀번호";
   if (!account) mailForm.elements.port.value = defaultPort();
   lastEmail = account?.email || "";
   applyProtocol();
@@ -695,7 +696,7 @@ mailForm.addEventListener("submit", async (event) => {
   const account = formAccount();
   const password = mailForm.elements.password.value;
   if (!account.id && !password) {
-    mailTestResult.textContent = "비밀번호를 입력하세요.";
+    mailTestResult.textContent = "앱 비밀번호를 입력하세요.";
     return;
   }
   if (account.security === "none" && !await window.findInside.confirm("암호화하지 않고 연결합니다. 비밀번호와 메일이 그대로 전송됩니다. 계속할까요?")) return;
