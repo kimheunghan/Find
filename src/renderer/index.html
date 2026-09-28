@@ -27,6 +27,13 @@
         <div id="excludes" class="roots"></div>
         <button id="addExclude" class="secondary">+ 제외 폴더 추가</button>
       </section>
+      <section>
+        <h2>메일 계정</h2>
+        <div id="mailAccounts" class="roots"></div>
+        <button id="addMailAccount" class="secondary">+ 메일 계정 추가</button>
+        <button id="syncMail" class="linkButton syncMail" hidden>지금 새 메일 가져오기</button>
+        <div id="mailStatus" class="status"></div>
+      </section>
       <button id="reindex" class="primary">색인 시작</button>
       <div id="indexStatus" class="status">색인을 불러오는 중…</div>
     </aside>
@@ -35,8 +42,13 @@
       <header>
         <label class="searchBox">
           <span>⌕</span>
-          <input id="query" type="search" placeholder="파일명, 경로 또는 파일 내용 검색" autocomplete="off" />
+          <input id="query" type="search" placeholder="파일명, 경로, 파일 내용 또는 메일 검색" autocomplete="off" />
         </label>
+        <div class="sourceTabs" role="tablist" aria-label="검색 분류">
+          <button type="button" role="tab" data-source="all" aria-selected="true">전체 <span data-count="all"></span></button>
+          <button type="button" role="tab" data-source="pc" aria-selected="false">PC 파일 <span data-count="pc"></span></button>
+          <button type="button" role="tab" data-source="mail" aria-selected="false">메일 <span data-count="mail"></span></button>
+        </div>
         <div class="filterBar">
           <button id="toggleFilters" type="button" class="filterToggle" aria-expanded="false" aria-controls="filterPanel">상세 조건 펼치기 ▾</button>
           <div id="filterChips" class="chips" aria-label="적용 중인 조건"></div>
@@ -106,6 +118,36 @@
         <ul class="hits"></ul>
       </article>
     </template>
+
+    <dialog id="mailDialog" class="mailDialog">
+      <form id="mailForm" method="dialog">
+        <h3>메일 계정 (IMAP)</h3>
+        <p class="filterHelp">회사 메일·네이버·다음 등 IMAP을 지원하는 메일. 서버 정보는 메일 서비스의 "IMAP 설정" 안내를 보고 입력하세요.</p>
+        <label>표시 이름<input name="name" placeholder="예: 회사 메일" /></label>
+        <label>이메일 주소<input name="email" type="email" placeholder="kim@company.com" /></label>
+        <label>IMAP 서버<input name="host" required placeholder="예: imap.company.com" /></label>
+        <div class="mailRow">
+          <label>보안 방식
+            <select name="security">
+              <option value="ssl">SSL/TLS</option>
+              <option value="starttls">STARTTLS</option>
+              <option value="none">없음 (암호화 안 함)</option>
+            </select>
+          </label>
+          <label>포트<input name="port" type="number" required value="993" /></label>
+        </div>
+        <p id="mailNoTls" class="mailWarn" hidden>⚠ 보안 방식이 "없음"이면 비밀번호와 메일이 암호화되지 않은 채 전송됩니다.</p>
+        <label>계정(아이디)<input name="user" required placeholder="보통 이메일 주소 전체" /></label>
+        <label>비밀번호<input name="password" type="password" placeholder="앱 비밀번호가 필요한 서비스도 있습니다" /></label>
+        <label class="mailCheck"><input name="allowSelfSigned" type="checkbox" /> 사내 서버의 자체 서명 인증서 허용</label>
+        <p id="mailTestResult" class="filterHelp"></p>
+        <div class="mailButtons">
+          <button type="button" id="mailTest" class="secondary">연결 시험</button>
+          <button type="button" id="mailCancel" class="secondary">취소</button>
+          <button type="submit" id="mailSave" class="primary">저장하고 가져오기</button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="highlight.js"></script>
     <script src="renderer.js"></script>

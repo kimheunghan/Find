@@ -115,6 +115,10 @@ function renderHits(list, hits, item) {
     const phrase = findPhrase(hit.snippet);
     line.title = `눌러서 문서 열기 — "${phrase}"을(를) 복사해 둡니다. 문서에서 Ctrl+F 후 Ctrl+V로 찾으세요.`;
     line.addEventListener("click", async () => {
+      if (item.kind === "mail") {
+        await openMailItem(item);
+        return;
+      }
       await window.findInside.openAt(item.path, phrase);
       hintEl.classList.remove("warn");
       hintEl.textContent = `"${phrase}" 복사됨 — 문서에서 Ctrl+F 후 Ctrl+V로 찾으세요 (${hit.location})`;
@@ -170,16 +174,22 @@ function renderResults(items, total = items.length) {
   const terms = FindHighlight.queryTerms(queryEl.value);
   for (const item of items) {
     const row = template.content.firstElementChild.cloneNode(true);
-    row.querySelector(".icon").textContent = item.kind === "folder" ? "▰" : "▤";
+    const isMail = item.kind === "mail";
+    row.querySelector(".icon").textContent = isMail ? "✉" : item.kind === "folder" ? "▰" : "▤";
     renderHighlighted(row.querySelector(".name"), item.name, terms);
-    renderHighlighted(row.querySelector(".path"), item.path, terms);
+    renderHighlighted(row.querySelector(".path"), isMail ? mailSummary(item) : item.path, terms);
     row.querySelector(".type").textContent = [
       item.matchedIn?.includes("content") ? "내용 일치" : "",
-      item.kind === "folder" ? "폴더" : item.extension || "파일"
+      isMail ? "메일" : item.kind === "folder" ? "폴더" : item.extension || "파일"
     ].filter(Boolean).join(" · ");
     renderHits(row.querySelector(".hits"), item.hits || [], item);
-    row.querySelector(".open").addEventListener("click", () => window.findInside.openItem(item.path));
-    row.querySelector(".show").addEventListener("click", () => window.findInside.showInFolder(item.path));
+    if (isMail) {
+      row.querySelector(".open").addEventListener("click", () => openMailItem(item));
+      row.querySelector(".show").hidden = true;
+    } else {
+      row.querySelector(".open").addEventListener("click", () => window.findInside.openItem(item.path));
+      row.querySelector(".show").addEventListener("click", () => window.findInside.showInFolder(item.path));
+    }
     resultsEl.append(row);
   }
 }
@@ -370,7 +380,7 @@ async function runSearch() {
   let failed = null;
   if (query) {
     try {
-      result = await window.findInside.search(query, filters);
+      result = await window.findInside.search(query, { ...filters, source });
     } catch (error) {
       failed = error;
     }
@@ -385,8 +395,172 @@ async function runSearch() {
     return;
   }
   renderResults(items, total);
+  renderSourceCounts(query ? result : null);
   resultsEl.dataset.query = query;
 }
+
+// ---- 검색 분류 탭 (전체 · PC 파일 · 메일) ----
+let source = "all";
+
+function renderSourceCounts(result) {
+  const counts = { all: result?.total, pc: result?.pcTotal, mail: result?.mailTotal };
+  document.querySelectorAll(".sourceTabs [data-count]").forEach((span) => {
+    const value = counts[span.dataset.count];
+    // 다른 탭을 고른 동안은 그 분류 개수를 모르므로 비워 둔다
+    span.textContent = value === undefined || (source !== "all" && span.dataset.count !== source && span.dataset.count !== "all") ? "" : `(${value.toLocaleString()})`;
+  });
+}
+
+document.querySelectorAll(".sourceTabs [data-source]").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    source = tab.dataset.source;
+    document.querySelectorAll(".sourceTabs [data-source]").forEach((item) => item.setAttribute("aria-selected", String(item === tab)));
+    runSearch();
+  });
+});
+
+// ---- 메일 ----
+function mailSummary(item) {
+  const date = item.date ? item.date.slice(0, 10) : "";
+  const account = mailAccounts.find((account) => account.id === item.account);
+  return [item.sender, date, [account?.name || account?.email, item.folder].filter(Boolean).join(" · ")].filter(Boolean).join("  |  ");
+}
+
+async function openMailItem(item) {
+  hintEl.classList.remove("warn");
+  hintEl.textContent = "메일 서버에서 메일을 받아 여는 중…";
+  try {
+    await window.findInside.openMail(item.path);
+    hintEl.textContent = `메일을 열었습니다: ${item.name}`;
+  } catch (error) {
+    hintEl.classList.add("warn");
+    hintEl.textContent = `메일을 열지 못했습니다: ${String(error.message || error).replace(/^Error invoking remote method '[^']+': /, "")}`;
+  }
+}
+
+let mailAccounts = [];
+const mailAccountsEl = document.querySelector("#mailAccounts");
+const mailStatusEl = document.querySelector("#mailStatus");
+const mailDialog = document.querySelector("#mailDialog");
+const mailForm = document.querySelector("#mailForm");
+const mailTestResult = document.querySelector("#mailTestResult");
+let editingAccount = null;
+
+function renderMailAccounts() {
+  mailAccountsEl.replaceChildren(...mailAccounts.map((account) => {
+    const item = document.createElement("div");
+    item.className = "root";
+    const label = document.createElement("span");
+    label.textContent = account.name || account.email || account.user;
+    label.title = [`${account.user} @ ${account.host}:${account.port}`, account.lastSync ? `마지막 가져오기: ${account.lastSync.slice(0, 16).replace("T", " ")}` : "", account.lastError ? `오류: ${account.lastError}` : ""].filter(Boolean).join("\n");
+    if (account.lastError) label.textContent += " ⚠";
+    label.style.cursor = "pointer";
+    label.addEventListener("click", () => openMailDialog(account));
+    const remove = document.createElement("button");
+    remove.className = "remove";
+    remove.title = "계정 삭제 (이 계정에서 가져온 메일 색인도 지웁니다)";
+    remove.textContent = "×";
+    remove.addEventListener("click", async () => {
+      if (!confirm(`"${label.textContent}" 계정을 삭제할까요? 이 계정에서 가져온 메일 색인도 지웁니다.`)) return;
+      await window.findInside.removeMail(account.id);
+      await loadMailAccounts();
+      if (queryEl.value.trim()) runSearch();
+    });
+    item.append(label, remove);
+    return item;
+  }));
+  document.querySelector("#syncMail").hidden = !mailAccounts.length;
+}
+
+async function loadMailAccounts() {
+  mailAccounts = await window.findInside.mailAccounts();
+  renderMailAccounts();
+}
+
+function formAccount() {
+  const data = new FormData(mailForm);
+  return {
+    id: editingAccount?.id,
+    name: data.get("name").trim(),
+    email: data.get("email").trim(),
+    host: data.get("host").trim(),
+    port: Number(data.get("port")),
+    security: data.get("security"),
+    user: data.get("user").trim(),
+    allowSelfSigned: data.get("allowSelfSigned") === "on"
+  };
+}
+
+function openMailDialog(account = null) {
+  editingAccount = account;
+  mailForm.reset();
+  for (const [key, value] of Object.entries(account || {})) {
+    const field = mailForm.elements[key];
+    if (!field) continue;
+    if (field.type === "checkbox") field.checked = Boolean(value);
+    else field.value = value ?? "";
+  }
+  mailForm.elements.password.placeholder = account ? "바꾸지 않으려면 비워 두세요" : "앱 비밀번호가 필요한 서비스도 있습니다";
+  mailTestResult.textContent = "";
+  document.querySelector("#mailNoTls").hidden = mailForm.elements.security.value !== "none";
+  mailDialog.showModal();
+}
+
+// 보안 방식을 바꾸면 흔히 쓰는 포트를 채워 준다 (직접 바꿀 수 있음)
+mailForm.elements.security.addEventListener("change", () => {
+  const security = mailForm.elements.security.value;
+  const port = mailForm.elements.port;
+  if (["993", "143", ""].includes(port.value)) port.value = security === "ssl" ? "993" : "143";
+  document.querySelector("#mailNoTls").hidden = security !== "none";
+});
+
+document.querySelector("#addMailAccount").addEventListener("click", () => openMailDialog());
+document.querySelector("#mailCancel").addEventListener("click", () => mailDialog.close());
+
+document.querySelector("#mailTest").addEventListener("click", async () => {
+  mailTestResult.textContent = "연결하는 중…";
+  try {
+    const result = await window.findInside.testMail(formAccount(), mailForm.elements.password.value);
+    mailTestResult.textContent = `✔ 연결 성공 — 폴더 ${result.folders}개, 받은편지함 메일 ${result.inboxMessages.toLocaleString()}통`;
+  } catch (error) {
+    mailTestResult.textContent = `✖ 연결 실패: ${String(error.message || error).replace(/^Error invoking remote method '[^']+': /, "")}`;
+  }
+});
+
+mailForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const account = formAccount();
+  const password = mailForm.elements.password.value;
+  if (!account.id && !password) {
+    mailTestResult.textContent = "비밀번호를 입력하세요.";
+    return;
+  }
+  if (account.security === "none" && !confirm("암호화하지 않고 연결합니다. 비밀번호와 메일이 그대로 전송됩니다. 계속할까요?")) return;
+  await window.findInside.saveMail(account, password);
+  mailDialog.close();
+  await loadMailAccounts();
+  mailStatusEl.textContent = "메일을 가져오는 중…";
+});
+
+document.querySelector("#syncMail").addEventListener("click", () => {
+  mailStatusEl.textContent = "새 메일을 가져오는 중…";
+  window.findInside.syncMail();
+});
+
+window.findInside.onMailProgress(async (progress) => {
+  const account = mailAccounts.find((item) => item.id === progress.account);
+  const label = account?.name || account?.email || "메일";
+  if (progress.finished) {
+    mailStatusEl.textContent = progress.error ? `${label}: 가져오기 실패 — ${progress.error}` : `${label}: 새 메일 ${progress.fetched.toLocaleString()}통 가져옴`;
+    await loadMailAccounts();
+  } else if (progress.total) {
+    mailStatusEl.textContent = `${label} ${progress.folder}: ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`;
+  } else if (progress.started) {
+    mailStatusEl.textContent = `${label}: 메일 서버에 연결하는 중…`;
+  }
+});
+
+loadMailAccounts();
 
 function onFiltersChanged() {
   renderFilters();

@@ -13,7 +13,7 @@ const db = openContentIndex(workerData.dbPath, { migrate: workerData.group === "
 const isImage = (filePath) => IMAGE_EXTENSIONS.has(path.extname(filePath).slice(1).toLowerCase());
 // delta(폴더 감시 변경분)와 ocr-precise(정밀 판독)는 넘겨받은 파일만 처리하고 다른 기록은 지우지 않는다.
 const owns = ["delta", "ocr-precise"].includes(workerData.group) ? () => false
-  : workerData.group === "images" ? isImage : (filePath) => !isImage(filePath);
+  : workerData.group === "images" ? isImage : (filePath) => !isImage(filePath) && !filePath.startsWith("imap://");
 const precise = workerData.group === "ocr-precise";
 
 parentPort.on("message", async (message) => {

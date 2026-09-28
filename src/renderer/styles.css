@@ -88,3 +88,19 @@ header { max-width: 900px; margin: 0 auto; }
 .moreNotice { padding: 8px 12px; border-radius: 8px; background: #1a2440; color: #aab8e0; font-size: 12.5px; }
 .hits li { cursor: pointer; border-radius: 5px; }
 .hits li:hover { background: #1b2540; color: #dbe3ff; }
+.sourceTabs { display: flex; gap: 4px; margin-top: 12px; }
+.sourceTabs button { border: 1px solid #2c3854; border-radius: 8px; padding: 6px 14px; color: #aab4ca; background: #121a2b; cursor: pointer; font-size: 13px; }
+.sourceTabs button[aria-selected="true"] { border-color: #5b7cfa; color: #fff; background: #2a3a70; }
+.sourceTabs span { color: #8fa0c8; font-size: 12px; }
+.syncMail { display: block; margin-top: 6px; }
+.mailDialog { width: 460px; max-width: calc(100vw - 32px); border: 1px solid #34415d; border-radius: 12px; padding: 20px 22px; color: #eef2ff; background: #111827; }
+.mailDialog::backdrop { background: rgba(0, 0, 0, .55); }
+.mailDialog h3 { margin: 0 0 6px; font-size: 16px; }
+.mailDialog label { display: grid; gap: 4px; margin-top: 10px; color: #aeb8ce; font-size: 13px; }
+.mailDialog input, .mailDialog select { padding: 7px 10px; border: 1px solid #2c3854; border-radius: 7px; outline: 0; color: #f4f6ff; background: #0d1321; font-size: 13px; }
+.mailDialog input:focus, .mailDialog select:focus { border-color: #5b7cfa; }
+.mailRow { display: grid; grid-template-columns: 1fr 110px; gap: 10px; }
+.mailCheck { display: flex !important; align-items: center; gap: 6px; }
+.mailWarn { margin: 8px 0 0; color: #f0b86e; font-size: 12px; }
+.mailButtons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.mailButtons button { width: auto; padding: 8px 14px; margin: 0; }

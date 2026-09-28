@@ -1,6 +1,8 @@
 "use strict";
 
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell } = require("electron");
+const os = require("node:os");
+const crypto = require("node:crypto");
 
 // 일부 Windows 환경에서 GPU 프로세스가 시작되지 않아 앱 전체가 종료되는 것을 막는다.
 app.disableHardwareAcceleration();
@@ -18,7 +20,7 @@ let window;
 let contentDb;
 // 설정(검색 위치·제외 폴더)은 작은 설정 파일에, 파일 목록(수백 MB)은 색인 파일에 둔다.
 // 메인 프로세스는 파일 목록을 들고 있지 않는다. 목록은 검색 worker가 읽어 검색한다.
-let settings = { roots: [], excludedPaths: [] };
+let settings = { roots: [], excludedPaths: [], mailAccounts: [] };
 let meta = { entryCount: 0, errorCount: 0, indexedAt: null };
 
 function createApplicationMenu() {
@@ -169,15 +171,18 @@ app.whenReady().then(async () => {
   await fs.mkdir(app.getPath("userData"), { recursive: true });
   contentDb = openContentIndex(contentDbPath(), { migrate: false });
   const savedSettings = await loadSettings();
-  if (savedSettings) settings = { roots: savedSettings.roots || [], excludedPaths: savedSettings.excludedPaths || [] };
+  if (savedSettings) settings = { roots: savedSettings.roots || [], excludedPaths: savedSettings.excludedPaths || [], mailAccounts: savedSettings.mailAccounts || [] };
   startSearchWorker();
   searchReady = reloadIndex().then(async (loaded) => {
     if (!savedSettings) {
-      settings = { roots: loaded.roots, excludedPaths: loaded.excludedPaths };
+      settings = { roots: loaded.roots, excludedPaths: loaded.excludedPaths, mailAccounts: [] };
       await saveSettings();
     }
     loadDelta();
     watchRoots();
+    // 메일 계정: 시작하고 조금 뒤, 그 뒤로 15분마다 새 메일을 가져온다
+    setTimeout(() => syncMail().catch(() => {}), 20_000);
+    setInterval(() => syncMail().catch(() => {}), 15 * 60_000);
     return loaded;
   });
   Menu.setApplicationMenu(null);
@@ -213,6 +218,138 @@ ipcMain.handle("roots:set", async (_, roots) => {
   await saveSettings();
   watchRoots();
   return settings.roots;
+});
+
+// ---- 메일 계정 (IMAP) ----
+// 비밀번호는 Windows DPAPI(safeStorage)로 암호화해 따로 저장한다. 설정 파일·로그에는 남기지 않는다 (ADR-0004 결정 7).
+function secretsFile() {
+  return path.join(app.getPath("userData"), "findinside-secrets.json");
+}
+
+async function readSecrets() {
+  try {
+    return JSON.parse(await fs.readFile(secretsFile(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+async function savePassword(accountId, password) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("이 PC에서는 비밀번호를 암호화해 저장할 수 없습니다");
+  const secrets = await readSecrets();
+  secrets[accountId] = safeStorage.encryptString(password).toString("base64");
+  await fs.writeFile(secretsFile(), JSON.stringify(secrets), "utf8");
+}
+
+async function loadPassword(accountId) {
+  const secrets = await readSecrets();
+  if (!secrets[accountId]) throw new Error("저장된 비밀번호가 없습니다. 계정을 다시 저장하세요");
+  return safeStorage.decryptString(Buffer.from(secrets[accountId], "base64"));
+}
+
+let mailWorker = null;
+let nextMailRequest = 1;
+const mailRequests = new Map();
+
+function askMailWorker(type, payload) {
+  if (!mailWorker) {
+    mailWorker = new Worker(path.join(__dirname, "mailWorker.js"), { workerData: { dbPath: contentDbPath() } });
+    mailWorker.on("message", (message) => {
+      if (message.type === "progress") {
+        window?.webContents.send("mail:progress", message.progress);
+        return;
+      }
+      const request = mailRequests.get(message.id);
+      if (!request) return;
+      mailRequests.delete(message.id);
+      if (message.error) request.reject(new Error(message.error));
+      else request.resolve(message.result);
+    });
+    mailWorker.on("exit", () => {
+      mailWorker = null;
+      for (const request of mailRequests.values()) request.reject(new Error("메일 작업이 중단되었습니다"));
+      mailRequests.clear();
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const id = nextMailRequest++;
+    mailRequests.set(id, { resolve, reject });
+    mailWorker.postMessage({ id, type, ...payload });
+  });
+}
+
+const publicAccount = ({ id, name, email, host, port, security, user, allowSelfSigned, lastSync, lastError }) =>
+  ({ id, name, email, host, port, security, user, allowSelfSigned, lastSync, lastError });
+
+let mailSyncing = null;
+
+// 모든 메일 계정에서 새 메일을 가져온다 (한 번에 하나씩)
+function syncMail() {
+  mailSyncing ||= (async () => {
+    for (const account of settings.mailAccounts) {
+      try {
+        window?.webContents.send("mail:progress", { account: account.id, started: true });
+        const result = await askMailWorker("sync", { account, password: await loadPassword(account.id) });
+        account.lastSync = new Date().toISOString();
+        account.lastError = null;
+        window?.webContents.send("mail:progress", { account: account.id, finished: true, fetched: result.fetched });
+      } catch (error) {
+        account.lastError = error.message;
+        window?.webContents.send("mail:progress", { account: account.id, finished: true, error: error.message });
+      }
+    }
+    await saveSettings();
+    await searchReady;
+    await askSearchWorker("reloadMail").catch(() => {});
+    window?.webContents.send("index:changed", { mail: true });
+  })().finally(() => { mailSyncing = null; });
+  return mailSyncing;
+}
+
+ipcMain.handle("mail:accounts", () => settings.mailAccounts.map(publicAccount));
+
+ipcMain.handle("mail:test", async (_, account, password) => {
+  const stored = !password && account.id ? await loadPassword(account.id) : password;
+  return askMailWorker("test", { account, password: stored });
+});
+
+ipcMain.handle("mail:save", async (_, account, password) => {
+  const saved = { ...account, id: account.id || crypto.randomUUID(), port: Number(account.port) };
+  if (password) await savePassword(saved.id, password);
+  const index = settings.mailAccounts.findIndex((item) => item.id === saved.id);
+  if (index >= 0) settings.mailAccounts[index] = { ...settings.mailAccounts[index], ...saved };
+  else settings.mailAccounts.push(saved);
+  await saveSettings();
+  syncMail().catch(() => {});
+  return publicAccount(saved);
+});
+
+ipcMain.handle("mail:remove", async (_, accountId) => {
+  const account = settings.mailAccounts.find((item) => item.id === accountId);
+  settings.mailAccounts = settings.mailAccounts.filter((item) => item.id !== accountId);
+  await saveSettings();
+  const secrets = await readSecrets();
+  delete secrets[accountId];
+  await fs.writeFile(secretsFile(), JSON.stringify(secrets), "utf8");
+  if (account) await askMailWorker("remove", { account }).catch(() => {});
+  await askSearchWorker("reloadMail").catch(() => {});
+  return true;
+});
+
+ipcMain.handle("mail:sync", () => syncMail());
+
+// 메일 열기: 서버에서 원문을 받아 임시 .eml로 저장하고 기본 메일 프로그램으로 연다 (원문은 PC에 쌓아 두지 않음)
+ipcMain.handle("mail:open", async (_, mailUri) => {
+  const { parseMailPath } = require("./imap");
+  const target = parseMailPath(mailUri);
+  const account = target && settings.mailAccounts.find((item) => item.id === target.account);
+  if (!account) throw new Error("메일 계정을 찾을 수 없습니다");
+  const { source } = await askMailWorker("fetch", { account, password: await loadPassword(account.id), folder: target.folder, uid: target.uid });
+  const dir = path.join(os.tmpdir(), "FindInside-mail");
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, `${target.uid}.eml`);
+  await fs.writeFile(file, Buffer.from(source, "base64"));
+  return shell.openPath(file);
 });
 
 ipcMain.handle("excludes:set", async (_, excludedPaths) => {

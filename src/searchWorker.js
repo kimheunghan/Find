@@ -6,11 +6,18 @@
 const fs = require("node:fs");
 const { parentPort, workerData } = require("node:worker_threads");
 const { searchEntries, tokenize, prepareEntries, updateEntries } = require("./search");
-const { openContentIndex, searchContent } = require("./contentIndex");
+const { openContentIndex, searchContent, mailEntries } = require("./contentIndex");
 const { SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS } = require("./extract");
 
 const db = openContentIndex(workerData.dbPath, { migrate: false });
 let entries = [];
+let mails = []; // IMAP 메일 목록 (mail_messages)
+
+function reloadMails() {
+  mails = mailEntries(db);
+  prepareEntries(mails);
+  return mails.length;
+}
 
 function contentTargets(group) {
   return entries
@@ -49,14 +56,24 @@ function load() {
 parentPort.on("message", ({ id, type, query, filters }) => {
   try {
     if (type === "load") {
-      parentPort.postMessage({ id, result: load() });
+      const loaded = load();
+      reloadMails();
+      parentPort.postMessage({ id, result: { ...loaded, mailCount: mails.length } });
+    } else if (type === "reloadMail") {
+      parentPort.postMessage({ id, result: { mailCount: reloadMails() } });
     } else if (type === "update") {
       updateEntries(entries, query.added, query.removed);
       parentPort.postMessage({ id, result: { entryCount: entries.length } });
     } else if (type === "search") {
-      const stats = {};
-      const items = searchEntries(entries, query, filters || {}, 200, searchContent(db, tokenize(query)), stats);
-      parentPort.postMessage({ id, result: { items, total: stats.total || 0 } });
+      // 분류: pc(파일·폴더), mail(메일 계정), all(둘 다). 메일은 범위·형식 조건을 적용하지 않는다.
+      const source = filters?.source || "all";
+      const contentMatches = searchContent(db, tokenize(query));
+      const pcStats = {};
+      const mailStats = {};
+      const pc = source === "mail" ? [] : searchEntries(entries, query, filters || {}, 200, contentMatches, pcStats);
+      const mail = source === "pc" ? [] : searchEntries(mails, query, {}, 200, contentMatches, mailStats);
+      const items = [...pc, ...mail].sort((a, b) => b.score - a.score).slice(0, 200);
+      parentPort.postMessage({ id, result: { items, total: (pcStats.total || 0) + (mailStats.total || 0), pcTotal: pcStats.total || 0, mailTotal: mailStats.total || 0 } });
     }
   } catch (error) {
     parentPort.postMessage({ id, error: error.message });

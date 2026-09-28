@@ -51,6 +51,28 @@ function openContentIndex(dbPath, { migrate = true } = {}) {
     CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(tokens, content='', contentless_delete=1);
     CREATE VIRTUAL TABLE IF NOT EXISTS chunk_chars USING fts5(chars, content='', contentless_delete=1);
     CREATE VIRTUAL TABLE IF NOT EXISTS chunk_loose USING fts5(tokens, content='', contentless_delete=1);
+    -- IMAP 메일 목록 (본문·첨부 글자는 files·chunks에 imap:// 경로로 저장). ADR-0004
+    CREATE TABLE IF NOT EXISTS mail_messages (
+      path TEXT PRIMARY KEY,
+      account TEXT NOT NULL,
+      folder TEXT NOT NULL,
+      uid INTEGER NOT NULL,
+      subject TEXT,
+      sender TEXT,
+      recipients TEXT,
+      sent_at TEXT,
+      attachments TEXT
+    );
+    CREATE INDEX IF NOT EXISTS mail_messages_folder ON mail_messages(account, folder);
+    -- 폴더마다 어디까지 가져왔는지 (UIDVALIDITY가 바뀌면 그 폴더를 다시 가져옴)
+    CREATE TABLE IF NOT EXISTS mail_folders (
+      account TEXT NOT NULL,
+      folder TEXT NOT NULL,
+      uid_validity TEXT NOT NULL,
+      last_uid INTEGER NOT NULL,
+      synced_at INTEGER,
+      PRIMARY KEY (account, folder)
+    );
   `);
   // 형식별 추출 방식 버전(extract.js EXTRACTOR_VERSIONS). 예전 DB에는 열이 없어 추가한다.
   if (!db.prepare("PRAGMA table_info(files)").all().some((column) => column.name === "extractor")) {
@@ -150,6 +172,51 @@ async function safeSave(db, ...args) {
     }
   }
   return false;
+}
+
+// ---- IMAP 메일 ----
+
+// 메일 한 통을 저장한다: 본문·첨부 글자는 files·chunks에(검색은 파일과 같은 방식), 목록 정보는 mail_messages에.
+async function saveMail(db, mail, chunks) {
+  const stat = { size: mail.size || 0, mtimeMs: mail.date ? Date.parse(mail.date) || 0 : 0 };
+  const saved = await safeSave(db, mail.path, stat, "done", chunks);
+  if (!saved) throw new Error("메일을 저장하지 못했습니다 (DB 사용 중)");
+  db.prepare(`INSERT OR REPLACE INTO mail_messages (path, account, folder, uid, subject, sender, recipients, sent_at, attachments)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(mail.path, mail.account, mail.folder, mail.uid, mail.subject || "", mail.sender || "", mail.recipients || "", mail.date || "", mail.attachments || "");
+}
+
+// 폴더 하나(또는 계정 전체)의 메일을 지운다 (UIDVALIDITY 변경, 계정 삭제 시).
+function removeMailFolder(db, account, folder) {
+  const rows = folder === undefined
+    ? db.prepare("SELECT path FROM mail_messages WHERE account = ?").all(account)
+    : db.prepare("SELECT path FROM mail_messages WHERE account = ? AND folder = ?").all(account, folder);
+  transaction(db, () => {
+    for (const { path: mailPath } of rows) {
+      const file = db.prepare("SELECT id FROM files WHERE path = ?").get(mailPath);
+      if (file) {
+        removeChunks(db, file.id);
+        db.prepare("DELETE FROM files WHERE id = ?").run(file.id);
+      }
+      db.prepare("DELETE FROM mail_messages WHERE path = ?").run(mailPath);
+    }
+    if (folder === undefined) db.prepare("DELETE FROM mail_folders WHERE account = ?").run(account);
+    else db.prepare("DELETE FROM mail_folders WHERE account = ? AND folder = ?").run(account, folder);
+  });
+}
+
+// 검색 목록에 넣을 메일 항목 (파일 항목과 같은 모양 + 메일 정보)
+function mailEntries(db) {
+  return db.prepare("SELECT path, account, folder, subject, sender, sent_at FROM mail_messages").all().map((row) => ({
+    name: row.subject || "(제목 없음)",
+    path: row.path,
+    kind: "mail",
+    extension: "mail",
+    account: row.account,
+    folder: row.folder,
+    sender: row.sender,
+    date: row.sent_at
+  }));
 }
 
 // 이름 색인 결과(entries) 중 지원 형식 파일의 내용을 추출한다. 크기·수정 시각이 같으면 건너뛴다.
@@ -370,4 +437,4 @@ function contentStats(db) {
   return Object.fromEntries(rows.map((row) => [row.status, row.count]));
 }
 
-module.exports = { openContentIndex, indexContent, searchContent, contentStats, makeSnippet };
+module.exports = { openContentIndex, indexContent, searchContent, contentStats, makeSnippet, saveMail, removeMailFolder, mailEntries };

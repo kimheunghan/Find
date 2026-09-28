@@ -1,0 +1,46 @@
+"use strict";
+
+// 메일 계정 작업(연결 시험·동기화·원문 받기)을 메인 프로세스 밖에서 한다.
+// 네트워크 대기와 메일·첨부 해석(수백 ms~수 초)이 창 입력을 막지 않게 하기 위해서다.
+// 비밀번호는 메인 프로세스가 복호화해 메시지로만 넘기고, 여기서는 저장하지 않는다.
+const { parentPort, workerData } = require("node:worker_threads");
+const { openContentIndex, removeMailFolder } = require("./contentIndex");
+const { testConnection, syncAccount, fetchSource } = require("./imap");
+const { stopOcr } = require("./ocr");
+
+const db = openContentIndex(workerData.dbPath, { migrate: false });
+
+// 메일 서버 오류를 사용자가 고칠 수 있는 안내로 바꾼다
+function friendlyError(error) {
+  const text = [error.code, error.responseText, error.message].filter(Boolean).join(" ");
+  if (/ENOTFOUND|EAI_AGAIN/.test(text)) return "서버 주소를 찾을 수 없습니다. IMAP 서버 이름을 확인하세요.";
+  if (/ECONNREFUSED/.test(text)) return "서버가 연결을 거부했습니다. 포트와 보안 방식을 확인하세요.";
+  if (/ETIMEDOUT|timeout|Timeout/.test(text)) return "서버 응답이 없습니다. 포트·보안 방식이나 회사 방화벽을 확인하세요.";
+  if (/AUTHENTICATIONFAILED|Invalid credentials|authentication failed|LOGIN failed|auth/i.test(text)) return "로그인에 실패했습니다. 아이디·비밀번호를 확인하세요. (앱 비밀번호가 필요한 서비스도 있습니다)";
+  if (/certificate|self.signed|CERT_|UNABLE_TO_VERIFY/i.test(text)) return "서버 인증서를 확인할 수 없습니다. 사내 서버라면 '자체 서명 인증서 허용'을 켜세요.";
+  if (/wrong version number|EPROTO|ssl3_get_record/i.test(text)) return "보안 방식이 서버와 맞지 않습니다. SSL/TLS와 STARTTLS를 바꿔 보세요.";
+  return error.responseText || error.message || String(error);
+}
+
+parentPort.on("message", async ({ id, type, account, password, folder, uid }) => {
+  try {
+    if (type === "test") {
+      parentPort.postMessage({ id, result: await testConnection(account, password) });
+    } else if (type === "sync") {
+      const result = await syncAccount(db, account, password, {
+        onProgress: (progress) => parentPort.postMessage({ type: "progress", progress })
+      });
+      parentPort.postMessage({ id, result });
+    } else if (type === "remove") {
+      removeMailFolder(db, account.id);
+      parentPort.postMessage({ id, result: true });
+    } else if (type === "fetch") {
+      const source = await fetchSource(account, password, folder, uid);
+      parentPort.postMessage({ id, result: { source: Buffer.from(source).toString("base64") } });
+    }
+  } catch (error) {
+    parentPort.postMessage({ id, error: friendlyError(error) });
+  } finally {
+    if (type === "sync") stopOcr();
+  }
+});

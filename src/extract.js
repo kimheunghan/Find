@@ -739,4 +739,4 @@ function describeLocation(location) {
   return "";
 }
 
-module.exports = { extractBuffer, MAIL_EXTENSIONS, imageSize, readImageSize, MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, PRECISE_OCR_VERSION, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };
+module.exports = { mailChunks, extractBuffer, MAIL_EXTENSIONS, imageSize, readImageSize, MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, PRECISE_OCR_VERSION, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };

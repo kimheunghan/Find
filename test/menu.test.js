@@ -52,5 +52,6 @@ test("이미지 형식은 실제 OCR 본문 색인 대상으로 등록된다", (
 test("검색어는 본문뿐 아니라 제목과 경로에서도 강조된다", () => {
   const source = fs.readFileSync(path.join(__dirname, "../src/renderer/renderer.js"), "utf8");
   assert.match(source, /renderHighlighted\(row\.querySelector\("\.name"\), item\.name, terms\)/);
-  assert.match(source, /renderHighlighted\(row\.querySelector\("\.path"\), item\.path, terms\)/);
+  // 파일은 경로를, 메일은 보낸 사람·날짜·폴더를 강조해 보여 준다
+  assert.match(source, /renderHighlighted\(row\.querySelector\("\.path"\), isMail \? mailSummary\(item\) : item\.path, terms\)/);
 });
