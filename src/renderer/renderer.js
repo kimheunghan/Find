@@ -712,14 +712,26 @@ function formAccount() {
 // 메일 서비스별 서버 정보. 고르면 서버·포트·보안 방식을 채운다 (사용자가 바꿀 수 있음).
 // 서비스마다 IMAP/POP3 사용 설정을 켜고 "앱 비밀번호"를 따로 만들어야 하는 경우가 많다.
 const MAIL_PRESETS = {
-  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], pop3: ["pop3.mailplug.co.kr", 995, "ssl"], note: "로그인 비밀번호가 아니라 메일플러그 환경설정에서 발급받은 앱 비밀번호를 넣으세요." },
-  naver: { imap: ["imap.naver.com", 993, "ssl"], pop3: ["pop.naver.com", 995, "ssl"], note: "네이버 메일 설정에서 IMAP 사용을 켜 주세요. 2단계 인증을 쓰면 앱 비밀번호를 넣으세요." },
-  daum: { imap: ["imap.daum.net", 993, "ssl"], pop3: ["pop.daum.net", 995, "ssl"], note: "다음 메일 설정에서 IMAP 사용을 켜 주세요." },
-  gmail: { imap: ["imap.gmail.com", 993, "ssl"], pop3: ["pop.gmail.com", 995, "ssl"], note: "로그인 비밀번호가 아니라 Google 계정에서 만든 앱 비밀번호(16자리)를 넣으세요." },
-  outlook: { imap: ["outlook.office365.com", 993, "ssl"], pop3: ["outlook.office365.com", 995, "ssl"], note: "2단계 인증을 쓰면 로그인 비밀번호 대신 앱 비밀번호를 넣으세요." }
+// password: 비밀번호 칸 이름. 앱 비밀번호가 꼭 필요한 서비스만 "앱 비밀번호"라고 부른다.
+  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], pop3: ["pop3.mailplug.co.kr", 995, "ssl"], password: "앱 비밀번호", note: "로그인 비밀번호가 아니라 메일플러그 환경설정에서 발급받은 앱 비밀번호를 넣으세요." },
+  naver: { imap: ["imap.naver.com", 993, "ssl"], pop3: ["pop.naver.com", 995, "ssl"], password: "비밀번호", note: "네이버 메일 환경설정에서 IMAP/SMTP 사용을 켜 주세요. 2단계 인증을 쓰면 로그인 비밀번호 대신 애플리케이션 비밀번호를 넣으세요." },
+  daum: { imap: ["imap.daum.net", 993, "ssl"], pop3: ["pop.daum.net", 995, "ssl"], password: "비밀번호", note: "다음 메일 환경설정에서 IMAP 사용을 켜 주세요. 2단계 인증을 쓰면 앱 비밀번호가 필요할 수 있습니다." },
+  gmail: { imap: ["imap.gmail.com", 993, "ssl"], pop3: ["pop.gmail.com", 995, "ssl"], password: "앱 비밀번호", note: "Gmail은 로그인 비밀번호로는 연결되지 않습니다. Google 계정 → 보안 → 앱 비밀번호에서 만든 16자리를 넣으세요." },
+  outlook: { imap: ["outlook.office365.com", 993, "ssl"], pop3: ["outlook.office365.com", 995, "ssl"], password: "비밀번호", note: "Outlook.com은 최근 비밀번호 방식 연결을 막고 있어 연결되지 않을 수 있습니다." }
 };
 
+// 고른 서비스에 맞게 비밀번호 칸 이름·안내를 바꾼다 (계정 수정 중이면 "비워 두면 그대로"를 먼저 알린다)
+function applyPasswordLabel() {
+  const preset = MAIL_PRESETS[mailForm.elements.preset.value];
+  const label = preset?.password || "비밀번호";
+  document.querySelector("#mailPasswordLabel").textContent = preset ? label : "비밀번호 (앱 비밀번호가 필요한 서비스도 있음)";
+  mailForm.elements.password.placeholder = editingAccount
+    ? "바꾸지 않으려면 비워 두세요"
+    : label === "앱 비밀번호" ? "메일 서비스에서 발급받은 앱 비밀번호" : "메일 비밀번호";
+}
+
 function applyPreset() {
+  applyPasswordLabel();
   const preset = MAIL_PRESETS[mailForm.elements.preset.value];
   const note = document.querySelector("#mailPresetNote");
   note.textContent = preset?.note || "서버 정보는 메일 서비스의 IMAP/POP3 설정 안내를 보고 고급 설정에 넣으세요.";
@@ -786,7 +798,7 @@ function openMailDialog(account = null, protocol = "imap") {
     if (field.type === "checkbox") field.checked = Boolean(value);
     else field.value = value ?? "";
   }
-  mailForm.elements.password.placeholder = account ? "바꾸지 않으려면 비워 두세요" : "메일 서비스에서 발급받은 앱 비밀번호";
+  applyPasswordLabel();
   if (!account) mailForm.elements.port.value = defaultPort();
   lastEmail = account?.email || "";
   applyProtocol();
@@ -833,7 +845,7 @@ mailForm.addEventListener("submit", async (event) => {
   const account = formAccount();
   const password = mailForm.elements.password.value;
   if (!account.id && !password) {
-    mailTestResult.textContent = "앱 비밀번호를 입력하세요.";
+    mailTestResult.textContent = `${document.querySelector("#mailPasswordLabel").textContent.replace(/s*(.*)$/, "")}를 입력하세요.`;
     return;
   }
   if (account.security === "none" && !await window.findInside.confirm("암호화하지 않고 연결합니다. 비밀번호와 메일이 그대로 전송됩니다. 계속할까요?")) return;
