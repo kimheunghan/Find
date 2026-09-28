@@ -85,3 +85,37 @@ test("IMAP: 서버의 UIDVALIDITY가 바뀌면 그 폴더를 비우고 다시 �
   assert.deepEqual(mailEntries(db).map((entry) => entry.name), ["새 번호 메일"]);
   assert.equal(searchContent(db, ["옛"]).size, 0, "예전 폴더 내용은 지워진다");
 });
+
+test("IMAP: 받는 도중 연결이 끊기면 다시 접속해 이어서 받는다", async () => {
+  const db = openContentIndex(":memory:");
+  const messages = new Map([[1, eml("첫 메일", "하나")], [2, eml("둘째 메일", "둘")]]);
+  let connections = 0;
+  const createClient = () => {
+    connections += 1;
+    const first = connections === 1;
+    const imap = {
+      mailbox: null,
+      usable: true,
+      async connect() {},
+      async logout() {},
+      async list() { return [{ path: "INBOX", flags: new Set() }]; },
+      async getMailboxLock(path) {
+        if (!imap.usable) throw Object.assign(new Error("Connection not available"), { code: "NoConnection" });
+        imap.mailbox = { path, uidValidity: 1 };
+        return { release() {} };
+      },
+      async search() { return [...messages.keys()]; },
+      async *fetch(range) {
+        if (first) {
+          imap.usable = false;
+          throw Object.assign(new Error("Socket timeout"), { code: "ETIMEOUT" });
+        }
+        for (const uid of range.split(",").map(Number)) yield { uid, source: messages.get(uid) };
+      }
+    };
+    return imap;
+  };
+  const result = await syncAccount(db, account, "pw", { createClient });
+  assert.equal(result.fetched, 2);
+  assert.equal(connections, 2, "한 번 다시 접속");
+});

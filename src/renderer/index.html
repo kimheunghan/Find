@@ -48,6 +48,12 @@
           <button type="button" role="tab" data-source="all" aria-selected="true">전체 <span data-count="all"></span></button>
           <button type="button" role="tab" data-source="pc" aria-selected="false">PC 파일 <span data-count="pc"></span></button>
           <button type="button" role="tab" data-source="mail" aria-selected="false">메일 <span data-count="mail"></span></button>
+          <label class="sortSelect">정렬
+            <select id="sortOrder">
+              <option value="relevance">관련도순</option>
+              <option value="newest">최신순</option>
+            </select>
+          </label>
         </div>
         <div class="filterBar">
           <button id="toggleFilters" type="button" class="filterToggle" aria-expanded="false" aria-controls="filterPanel">상세 조건 펼치기 ▾</button>

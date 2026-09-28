@@ -53,3 +53,17 @@ test("조건을 먼저 적용하므로 상한에 걸려 범위 안 결과가 빠
   const results = searchEntries([...many, target], "보고서", { scopes: ["D:\\업무"] });
   assert.deepEqual(results.map((item) => item.name), ["보고서.hwp"]);
 });
+
+test("검색 결과: 최신순이면 날짜가 최근인 것부터, 관련도순이어도 날짜를 붙인다", () => {
+  const { searchEntries } = require("../src/search");
+  const entries = [
+    { name: "보고서.hwp", path: "C:\a\보고서.hwp", kind: "file", extension: "hwp" },
+    { name: "보고서_최종.hwp", path: "C:\b\보고서_최종.hwp", kind: "file", extension: "hwp" }
+  ];
+  const times = { "C:\a\보고서.hwp": 1000, "C:\b\보고서_최종.hwp": 5000 };
+  const dateOf = (entry) => times[entry.path];
+  const relevance = searchEntries(entries, "보고서", {}, 10, new Map(), {}, dateOf);
+  assert.ok(relevance.every((item) => item.time === times[item.path]), "관련도순에도 날짜");
+  const newest = searchEntries(entries, "보고서", { sort: "newest" }, 10, new Map(), {}, dateOf);
+  assert.deepEqual(newest.map((item) => item.time), [5000, 1000]);
+});

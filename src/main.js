@@ -280,6 +280,7 @@ function askMailWorker(type, payload) {
       if (message.error) request.reject(new Error(message.error));
       else request.resolve(message.result);
     });
+    mailWorker.on("error", (error) => console.error("mail worker", error));
     mailWorker.on("exit", () => {
       mailWorker = null;
       for (const request of mailRequests.values()) request.reject(new Error("메일 작업이 중단되었습니다"));

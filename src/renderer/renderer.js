@@ -160,7 +160,7 @@ function renderResults(items, total = items.length) {
   if (total > items.length) {
     const more = document.createElement("div");
     more.className = "moreNotice";
-    more.textContent = `관련도 높은 ${items.length.toLocaleString()}개만 표시합니다. 검색어를 더 넣거나 상세 조건으로 범위를 좁혀 보세요.`;
+    more.textContent = `${sortEl.value === "newest" ? "최근" : "관련도 높은"} ${items.length.toLocaleString()}개만 표시합니다. 검색어를 더 넣거나 상세 조건으로 범위를 좁혀 보세요.`;
     resultsEl.append(more);
   }
   if (!items.length) {
@@ -180,7 +180,8 @@ function renderResults(items, total = items.length) {
     renderHighlighted(row.querySelector(".path"), isMail ? mailSummary(item) : item.path, terms);
     row.querySelector(".type").textContent = [
       item.matchedIn?.includes("content") ? "내용 일치" : "",
-      isMail ? "메일" : item.kind === "folder" ? "폴더" : item.extension || "파일"
+      isMail ? "메일" : item.kind === "folder" ? "폴더" : item.extension || "파일",
+      item.time ? formatDate(item.time) : ""
     ].filter(Boolean).join(" · ");
     renderHits(row.querySelector(".hits"), item.hits || [], item);
     if (isMail) {
@@ -381,7 +382,7 @@ async function runSearch() {
   let failed = null;
   if (query) {
     try {
-      result = await window.findInside.search(query, { ...filters, source });
+      result = await window.findInside.search(query, { ...filters, source, sort: sortEl.value });
     } catch (error) {
       failed = error;
     }
@@ -398,6 +399,28 @@ async function runSearch() {
   renderResults(items, total);
   renderSourceCounts(query ? result : null);
   resultsEl.dataset.query = query;
+}
+
+// ---- 정렬 (관련도순 · 최신순). 고른 값은 다음 실행에도 쓴다 ----
+const sortEl = document.querySelector("#sortOrder");
+try {
+  sortEl.value = localStorage.getItem("findinside.sort") === "newest" ? "newest" : "relevance";
+} catch {
+  // 저장소를 못 쓰면 관련도순
+}
+sortEl.addEventListener("change", () => {
+  try {
+    localStorage.setItem("findinside.sort", sortEl.value);
+  } catch {
+    // 기억하지 못해도 이번 검색에는 적용된다
+  }
+  runSearch();
+});
+
+function formatDate(time) {
+  const date = new Date(time);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 // ---- 검색 분류 탭 (전체 · PC 파일 · 메일) ----

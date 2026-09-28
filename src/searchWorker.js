@@ -53,6 +53,18 @@ function load() {
   };
 }
 
+// 최신순 정렬용 날짜. 파일은 수정한 날짜를 디스크에서 읽어 기억해 두고(목록이 바뀌면 비움), 메일은 보낸 날짜.
+const fileTimes = new Map();
+function fileTime(entry) {
+  let time = fileTimes.get(entry.path);
+  if (time === undefined) {
+    time = fs.statSync(entry.path, { throwIfNoEntry: false })?.mtimeMs || 0;
+    fileTimes.set(entry.path, time);
+  }
+  return time;
+}
+const mailTime = (entry) => Date.parse(entry.date || "") || 0;
+
 parentPort.on("message", ({ id, type, query, filters }) => {
   try {
     if (type === "load") {
@@ -63,6 +75,7 @@ parentPort.on("message", ({ id, type, query, filters }) => {
       parentPort.postMessage({ id, result: { mailCount: reloadMails() } });
     } else if (type === "update") {
       updateEntries(entries, query.added, query.removed);
+      for (const entry of query.added || []) fileTimes.delete(entry.path);
       parentPort.postMessage({ id, result: { entryCount: entries.length } });
     } else if (type === "search") {
       // 분류: pc(파일·폴더), mail(메일 계정), all(둘 다). 메일은 범위·형식 조건을 적용하지 않는다.
@@ -70,9 +83,12 @@ parentPort.on("message", ({ id, type, query, filters }) => {
       const contentMatches = searchContent(db, tokenize(query));
       const pcStats = {};
       const mailStats = {};
-      const pc = source === "mail" ? [] : searchEntries(entries, query, filters || {}, 200, contentMatches, pcStats);
-      const mail = source === "pc" ? [] : searchEntries(mails, query, {}, 200, contentMatches, mailStats);
-      const items = [...pc, ...mail].sort((a, b) => b.score - a.score).slice(0, 200);
+      const sort = filters?.sort === "newest" ? "newest" : "relevance";
+      const pc = source === "mail" ? [] : searchEntries(entries, query, filters || {}, 200, contentMatches, pcStats, fileTime);
+      const mail = source === "pc" ? [] : searchEntries(mails, query, { sort }, 200, contentMatches, mailStats, mailTime);
+      const items = [...pc, ...mail]
+        .sort(sort === "newest" ? (a, b) => (b.time || 0) - (a.time || 0) || b.score - a.score : (a, b) => b.score - a.score)
+        .slice(0, 200);
       parentPort.postMessage({ id, result: { items, total: (pcStats.total || 0) + (mailStats.total || 0), pcTotal: pcStats.total || 0, mailTotal: mailStats.total || 0 } });
     }
   } catch (error) {

@@ -107,8 +107,12 @@ function normalizedKeys(entries) {
   return keys;
 }
 
+// 최신순 정렬에서 날짜를 확인할 최대 개수 (파일 날짜는 디스크에서 읽어 오므로 관련도 높은 것부터 이만큼만)
+const NEWEST_CANDIDATES = 20000;
+
 // stats를 넘기면 상한(limit)과 관계없이 일치한 전체 개수를 stats.total에 담는다.
-function searchEntries(entries, query, filters = {}, limit = 200, contentMatches = new Map(), stats = {}) {
+// filters.sort가 "newest"이면 dateOf(entry)가 돌려준 시각(ms)이 최근인 것부터 보여 준다.
+function searchEntries(entries, query, filters = {}, limit = 200, contentMatches = new Map(), stats = {}, dateOf = null) {
   const tokens = tokenize(query);
   if (!tokens.length) return [];
 
@@ -131,11 +135,19 @@ function searchEntries(entries, query, filters = {}, limit = 200, contentMatches
   }
 
   stats.total = found.length;
-  return found
-    .sort((a, b) => b.result.score - a.result.score || a.entry.name.localeCompare(b.entry.name))
+  found.sort((a, b) => b.result.score - a.result.score || a.entry.name.localeCompare(b.entry.name));
+  let ordered = found;
+  if (filters.sort === "newest" && dateOf) {
+    ordered = found.slice(0, NEWEST_CANDIDATES);
+    for (const item of ordered) item.time = dateOf(item.entry) || 0;
+    ordered.sort((a, b) => b.time - a.time || b.result.score - a.result.score);
+  }
+  // 보여 줄 결과에는 정렬과 관계없이 날짜를 붙인다 (같은 이름의 파일을 구분할 수 있게)
+  return ordered
     .slice(0, limit)
-    .map(({ entry, contentMatch, result }) => ({
+    .map(({ entry, contentMatch, result, time }) => ({
       ...entry,
+      time: time ?? (dateOf ? dateOf(entry) || 0 : 0),
       score: result.score,
       matchedIn: result.matchedIn,
       hits: result.matchedIn.includes("content") ? contentMatch.hits : []
