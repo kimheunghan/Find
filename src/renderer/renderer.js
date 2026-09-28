@@ -360,7 +360,10 @@ function renderFilters() {
 }
 
 function describeSearch(query) {
-  if (source === "mail") return `“${query}” · 연결한 메일 (제목·보낸 사람·받는 사람·본문·첨부)`;
+  if (source === "mail") {
+    const folders = selectedMailFolders.map((key) => folderLabel(key.split("	")[1]));
+    return `“${query}” · ${folders.length ? folders.join(", ") : "모든 메일 폴더"} (제목·보낸 사람·받는 사람·본문·첨부)`;
+  }
   const parts = [];
   parts.push(filters.scopes.length ? filters.scopes.join(", ") : "전체 검색 위치");
   if (filters.extensions.length) parts.push(filters.extensions.map((item) => item.toUpperCase()).join("·"));
@@ -386,7 +389,7 @@ async function runSearch() {
     const stopLoading = showLoading(sequence);
     searchInFlight = true;
     try {
-      result = await window.findInside.search(query, { ...filters, source, sort: sortEl.value });
+      result = await window.findInside.search(query, { ...filters, source, sort: sortEl.value, mailFolders: source === "mail" ? selectedMailFolders : [] });
     } catch (error) {
       failed = error;
     } finally {
@@ -510,7 +513,10 @@ function applySourceView() {
   if (isMail) filterPanelEl.hidden = true;
   else setFilterPanelOpen(loadFilterPanelOpen());
   document.querySelector("#mailPanel").hidden = !isMail;
-  if (isMail) renderMailPanel();
+  if (isMail) {
+    renderMailPanel();
+    loadMailFolders();
+  }
 }
 
 function renderMailPanel() {
@@ -576,7 +582,55 @@ function renderMailPanel() {
   );
   const status = document.createElement("p");
   status.textContent = mailStatusEl.textContent;
-  panel.replaceChildren(title, ...cards, actions, status);
+  panel.replaceChildren(title, ...cards, actions, status, renderMailFolders());
+}
+
+// ---- 메일 폴더 조건 (메일 탭의 검색 범위: 받은편지함·보낸 편지함 등) ----
+let mailFolders = [];
+let selectedMailFolders = [];
+const folderLabel = (folder) => (/^inbox$/i.test(folder) ? "받은편지함" : folder);
+
+function renderMailFolders() {
+  const row = document.createElement("div");
+  row.className = "mailFolders";
+  if (!mailFolders.length) return row;
+  const label = document.createElement("span");
+  label.textContent = "검색할 폴더";
+  const chip = (text, pressed, onClick) => {
+    const element = document.createElement("button");
+    element.type = "button";
+    element.textContent = text;
+    element.setAttribute("aria-pressed", String(pressed));
+    element.addEventListener("click", onClick);
+    return element;
+  };
+  const many = new Set(mailFolders.map((item) => item.account)).size > 1;
+  const inboxFirst = [...mailFolders].sort((a, b) => Number(/^inbox$/i.test(b.folder)) - Number(/^inbox$/i.test(a.folder)) || b.count - a.count);
+  row.append(label, chip("전체", !selectedMailFolders.length, () => setMailFolders([])));
+  for (const item of inboxFirst) {
+    const account = mailAccounts.find((entry) => entry.id === item.account);
+    const name = `${many ? `${account?.name || account?.email || ""} ` : ""}${folderLabel(item.folder)} ${item.count.toLocaleString()}`;
+    row.append(chip(name, selectedMailFolders.includes(item.key), () => {
+      setMailFolders(selectedMailFolders.includes(item.key) ? selectedMailFolders.filter((key) => key !== item.key) : [...selectedMailFolders, item.key]);
+    }));
+  }
+  return row;
+}
+
+function setMailFolders(keys) {
+  selectedMailFolders = keys;
+  renderMailPanel();
+  runSearch();
+}
+
+async function loadMailFolders() {
+  try {
+    mailFolders = await window.findInside.mailFolders();
+  } catch {
+    mailFolders = [];
+  }
+  selectedMailFolders = selectedMailFolders.filter((key) => mailFolders.some((item) => item.key === key));
+  if (source === "mail") renderMailPanel();
 }
 
 // ---- 메일 ----
@@ -636,6 +690,7 @@ function renderMailAccounts() {
 async function loadMailAccounts() {
   mailAccounts = await window.findInside.mailAccounts();
   renderMailAccounts();
+  loadMailFolders();
 }
 
 function formAccount() {
@@ -991,7 +1046,8 @@ window.findInside.onIndexProgress((progress) => {
 window.findInside.onIndexDone(showIndexDone);
 // 폴더 감시로 새 파일·바뀐 파일의 내용 색인이 끝나면 지금 검색어로 결과를 새로 고친다.
 let lastChangedSearch = 0;
-window.findInside.onIndexChanged(() => {
+window.findInside.onIndexChanged((change) => {
+  if (change?.mail) loadMailFolders();
   // 새 파일이 자주 반영되면 결과가 계속 다시 그려져 클릭이 막힌다. 10초에 한 번 이하, 입력 중이 아닐 때만.
   if (!queryEl.value.trim() || searchInFlight || document.activeElement === queryEl || Date.now() - lastChangedSearch < 10_000) return;
   lastChangedSearch = Date.now();

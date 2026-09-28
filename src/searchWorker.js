@@ -73,6 +73,13 @@ parentPort.on("message", ({ id, type, query, filters }) => {
       const loaded = load();
       reloadMails();
       parentPort.postMessage({ id, result: { ...loaded, mailCount: mails.length } });
+    } else if (type === "mailFolders") {
+      const counts = new Map();
+      for (const entry of mails) {
+        const key = `${entry.account}	${entry.folder}`;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      parentPort.postMessage({ id, result: [...counts].map(([key, count]) => ({ key, account: key.split("	")[0], folder: key.split("	")[1], count })) });
     } else if (type === "reloadMail") {
       parentPort.postMessage({ id, result: { mailCount: reloadMails() } });
     } else if (type === "update") {
@@ -87,7 +94,10 @@ parentPort.on("message", ({ id, type, query, filters }) => {
       const mailStats = {};
       const sort = filters?.sort === "newest" ? "newest" : "relevance";
       const pc = source === "mail" ? [] : searchEntries(entries, query, filters || {}, 200, contentMatches, pcStats, fileTime);
-      const mail = source === "pc" ? [] : searchEntries(mails, query, { sort }, 200, contentMatches, mailStats, mailTime);
+      // 메일 폴더 조건 (메일 탭에서 고른 폴더만). 폴더 키는 "계정	폴더"
+      const folderKeys = new Set(filters?.mailFolders || []);
+      const mailList = folderKeys.size ? mails.filter((entry) => folderKeys.has(`${entry.account}	${entry.folder}`)) : mails;
+      const mail = source === "pc" ? [] : searchEntries(mailList, query, { sort }, 200, contentMatches, mailStats, mailTime);
       const items = [...pc, ...mail]
         .sort(sort === "newest" ? (a, b) => sortTime(b) - sortTime(a) || b.score - a.score : (a, b) => b.score - a.score)
         .slice(0, 200);

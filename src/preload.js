@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("findInside", {
   saveMail: (account, password) => ipcRenderer.invoke("mail:save", account, password),
   removeMail: (accountId) => ipcRenderer.invoke("mail:remove", accountId),
   syncMail: () => ipcRenderer.invoke("mail:sync"),
+  mailFolders: () => ipcRenderer.invoke("mail:folders"),
   openMail: (mailUri) => ipcRenderer.invoke("mail:open", mailUri),
   onMailProgress: (callback) => ipcRenderer.on("mail:progress", (_, value) => callback(value)),
   runMenuAction: (action) => ipcRenderer.invoke("menu:action", action),

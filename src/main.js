@@ -285,6 +285,7 @@ async function loadPassword(accountId) {
 }
 
 let mailWorker = null;
+let lastMailReload = 0;
 let nextMailRequest = 1;
 const mailRequests = new Map();
 
@@ -294,6 +295,11 @@ function askMailWorker(type, payload) {
     mailWorker.on("message", (message) => {
       if (message.type === "progress") {
         window?.webContents.send("mail:progress", message.progress);
+        // 가져온 메일부터 검색되게 10초에 한 번 검색 목록에 반영한다
+        if (Date.now() - lastMailReload > 10_000) {
+          lastMailReload = Date.now();
+          askSearchWorker("reloadMail").catch(() => {});
+        }
         return;
       }
       const request = mailRequests.get(message.id);
@@ -375,6 +381,10 @@ ipcMain.handle("mail:remove", async (_, accountId) => {
 });
 
 ipcMain.handle("mail:sync", () => syncMail());
+ipcMain.handle("mail:folders", async () => {
+  await searchReady;
+  return askSearchWorker("mailFolders");
+});
 
 // 메일 열기: 서버에서 원문을 받아 임시 .eml로 저장하고 기본 메일 프로그램으로 연다 (원문은 PC에 쌓아 두지 않음)
 ipcMain.handle("mail:open", async (_, mailUri) => {
