@@ -550,12 +550,12 @@ function formAccount() {
     id: editingAccount?.id,
     protocol: data.get("protocol"),
     preset: data.get("preset") || "",
-    name: data.get("name").trim(),
+    name: data.get("name").trim() || data.get("email").trim(),
     email: data.get("email").trim(),
     host: data.get("host").trim(),
     port: Number(data.get("port")),
     security: data.get("security"),
-    user: data.get("user").trim(),
+    user: data.get("user").trim() || data.get("email").trim(),
     allowSelfSigned: data.get("allowSelfSigned") === "on"
   };
 }
@@ -563,17 +563,19 @@ function formAccount() {
 // 메일 서비스별 서버 정보. 고르면 서버·포트·보안 방식을 채운다 (사용자가 바꿀 수 있음).
 // 서비스마다 IMAP/POP3 사용 설정을 켜고 "앱 비밀번호"를 따로 만들어야 하는 경우가 많다.
 const MAIL_PRESETS = {
-  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], note: "메일플러그 관리 화면에서 IMAP 사용을 켜고, 비밀번호 칸에는 앱 비밀번호를 넣으세요. 아이디는 메일 주소입니다. POP3 서버 주소는 메일플러그 설정 안내를 확인하세요." },
-  naver: { imap: ["imap.naver.com", 993, "ssl"], pop3: ["pop.naver.com", 995, "ssl"], note: "네이버 메일 환경설정에서 IMAP/POP3 사용을 켜세요. 2단계 인증을 쓰면 애플리케이션 비밀번호가 필요합니다." },
-  daum: { imap: ["imap.daum.net", 993, "ssl"], pop3: ["pop.daum.net", 995, "ssl"], note: "다음 메일 환경설정에서 IMAP/POP3 사용을 켜세요." },
-  gmail: { imap: ["imap.gmail.com", 993, "ssl"], pop3: ["pop.gmail.com", 995, "ssl"], note: "Google 계정의 앱 비밀번호(16자리)를 만들어 비밀번호 칸에 넣으세요." },
-  outlook: { imap: ["outlook.office365.com", 993, "ssl"], pop3: ["outlook.office365.com", 995, "ssl"], note: "Microsoft 계정은 앱 비밀번호가 필요할 수 있습니다. 회사 Microsoft 365 메일은 IMAP이 막혀 있을 수 있습니다." }
+  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], note: "비밀번호는 메일플러그의 앱 비밀번호를 넣으세요." },
+  naver: { imap: ["imap.naver.com", 993, "ssl"], pop3: ["pop.naver.com", 995, "ssl"], note: "네이버 메일 설정에서 IMAP 사용을 켜 주세요." },
+  daum: { imap: ["imap.daum.net", 993, "ssl"], pop3: ["pop.daum.net", 995, "ssl"], note: "다음 메일 설정에서 IMAP 사용을 켜 주세요." },
+  gmail: { imap: ["imap.gmail.com", 993, "ssl"], pop3: ["pop.gmail.com", 995, "ssl"], note: "비밀번호는 Google 앱 비밀번호(16자리)를 넣으세요." },
+  outlook: { imap: ["outlook.office365.com", 993, "ssl"], pop3: ["outlook.office365.com", 995, "ssl"], note: "비밀번호는 앱 비밀번호가 필요할 수 있습니다." }
 };
 
 function applyPreset() {
   const preset = MAIL_PRESETS[mailForm.elements.preset.value];
   const note = document.querySelector("#mailPresetNote");
-  note.textContent = preset?.note || "";
+  note.textContent = preset?.note || "서버 정보는 메일 서비스의 IMAP/POP3 설정 안내를 보고 고급 설정에 넣으세요.";
+  // 직접 입력이거나 서비스에 그 연결 방식 정보가 없으면 고급 설정을 펼친다
+  document.querySelector("#mailAdvanced").open = !preset || !preset[mailForm.elements.protocol.value];
   if (!preset) return;
   const settings = preset[mailForm.elements.protocol.value];
   if (!settings) {
@@ -585,7 +587,6 @@ function applyPreset() {
   mailForm.elements.security.value = security;
   mailForm.elements.port.value = String(port);
   document.querySelector("#mailNoTls").hidden = true;
-  if (!mailForm.elements.name.value) mailForm.elements.name.value = mailForm.elements.preset.selectedOptions[0].textContent.replace(/\s*\(.*\)$/, "");
 }
 
 mailForm.elements.preset.addEventListener("change", applyPreset);
@@ -621,11 +622,16 @@ function openMailDialog(account = null, protocol = "imap") {
     if (field.type === "checkbox") field.checked = Boolean(value);
     else field.value = value ?? "";
   }
-  mailForm.elements.password.placeholder = account ? "바꾸지 않으려면 비워 두세요" : "앱 비밀번호가 필요한 서비스도 있습니다";
+  mailForm.elements.password.placeholder = account ? "바꾸지 않으려면 비워 두세요" : "";
   if (!account) mailForm.elements.port.value = defaultPort();
   lastEmail = account?.email || "";
-  document.querySelector("#mailPresetNote").textContent = "";
   applyProtocol();
+  if (account) {
+    document.querySelector("#mailPresetNote").textContent = "";
+    document.querySelector("#mailAdvanced").open = !account.preset;
+  } else {
+    applyPreset(); // 새 계정은 첫 번째 서비스(메일플러그) 값으로 채워 둔다
+  }
   mailTestResult.textContent = "";
   document.querySelector("#mailNoTls").hidden = mailForm.elements.security.value !== "none";
   mailDialog.showModal();
