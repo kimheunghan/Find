@@ -6,3 +6,4 @@ dist/
 .ocr-models/
 *.log
 .qa-ocr/
+release/

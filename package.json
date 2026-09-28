@@ -30,7 +30,7 @@
     "productName": "FindInside",
     "copyright": "Copyright © 2026 kimheunghan",
     "directories": {
-      "output": "dist"
+      "output": "release"
     },
     "asar": false,
     "files": [
