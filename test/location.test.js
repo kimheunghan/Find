@@ -168,3 +168,17 @@ test("PPTX: 슬라이드 번호는 파일 이름이 아니라 발표 순서와 �
   assert.equal(whereIs(chunks, "개요"), "슬라이드 1");
   assert.equal(whereIs(chunks, "사양"), "슬라이드 2");
 });
+
+test("세로쓰기: 한 글자씩 가로 줄로 잘못 묶인 OCR 결과에서 같은 세로 줄을 위에서 아래로 잇는다", () => {
+  const { verticalColumns } = require("../src/ocr");
+  // Windows OCR이 세로 "아들홍 / 21세 / 최삼"을 가로 줄 "아 2 최 / 들 1 삼 / 홍 세"로 돌려준 경우
+  const word = (text, x, y) => ({ text, x, y, w: 50, h: 52 });
+  const lines = [
+    { text: "아 2 최", words: [word("아", 100, 50), word("2", 330, 58), word("최", 460, 50)] },
+    { text: "들 1 삼", words: [word("들", 100, 128), word("1", 330, 136), word("삼", 460, 128)] },
+    { text: "홍 세", words: [word("홍", 100, 206), word("세", 330, 206)] }
+  ];
+  assert.deepEqual(verticalColumns(lines).map((column) => column.text), ["아들홍", "21세", "최삼"]);
+  // 가로로 쓴 보통 문장은 세로 줄로 잡지 않는다
+  assert.deepEqual(verticalColumns([{ text: "장비 설치 확인서", words: [word("장비", 0, 0), word("설치", 60, 0), word("확인서", 120, 0)] }]), []);
+});

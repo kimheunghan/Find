@@ -23,25 +23,37 @@ for i, line in enumerate(lines):
     d.text((40, 30 + 70 * i), line, fill="black", font=font)
 image.save(sys.argv[1])
 image.convert("L").save(sys.argv[2], quality=90)
+# 세로쓰기 (족보처럼 글자를 위에서 아래로)
+vfont = ImageFont.truetype(r"C:\\Windows\\Fonts\\malgun.ttf", 28)
+columns = ["아들홍묵", "권지구일일록쪽기록", "21세", "최삼순"]
+vertical = Image.new("RGB", (80 + 60 * len(columns), 420), (252, 248, 236))
+vd = ImageDraw.Draw(vertical)
+for i, text in enumerate(columns):
+    for j, ch in enumerate(text):
+        vd.text((40 + 60 * i, 20 + j * 38), ch, fill=(40, 40, 40), font=vfont)
+vertical.save(sys.argv[3])
 `;
 
 (async () => {
   await fs.mkdir(dir, { recursive: true });
   const png = path.join(dir, "스캔_설치확인.png");
   const jpg = path.join(dir, "스캔 사본.jpg");
-  execFileSync(pythonExecutable(), ["-c", draw, png, jpg], { env: { ...process.env, PYTHONUTF8: "1" } });
-  const entries = [png, jpg].map((file) => ({ name: path.basename(file), path: file, kind: "file", extension: path.extname(file).slice(1) }));
+  const vertical = path.join(dir, "족보 세로쓰기.png");
+  execFileSync(pythonExecutable(), ["-c", draw, png, jpg, vertical], { env: { ...process.env, PYTHONUTF8: "1" } });
+  const entries = [png, jpg, vertical].map((file) => ({ name: path.basename(file), path: file, kind: "file", extension: path.extname(file).slice(1) }));
 
   const db = openContentIndex(":memory:");
   const started = Date.now();
   const summary = await indexContent(db, entries);
   stopOcr();
   console.log("OCR 색인", summary, `${((Date.now() - started) / 1000).toFixed(1)}초`);
-  assert.equal(summary.extracted, 2, "두 이미지 모두 OCR되어야 한다");
+  assert.equal(summary.extracted, 3, "세 이미지 모두 OCR되어야 한다");
 
   const cases = [
     ["설치", 2], ["사양", 2], ["치", 2], ["10.0.3.21", 2], ["8core", 2],
-    ["운영 서버", 2], ['"운영 서버"', 2], ["web01", 2], ["점검 결과", 2], ["없는단어", 0]
+    ["운영 서버", 2], ['"운영 서버"', 2], ["web01", 2], ["점검 결과", 2], ["없는단어", 0],
+    // 세로쓰기
+    ["아들홍묵", 1], ["최삼순", 1], ["21세", 1], ["권지구일일록", 1]
   ];
   let failed = 0;
   for (const [query, expected] of cases) {

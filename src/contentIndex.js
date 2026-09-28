@@ -3,12 +3,19 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
-const { MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, extractFile, describeLocation, resolveLocation } = require("./extract");
+const { readImageSize, MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, extractFile, describeLocation, resolveLocation } = require("./extract");
 const { TOKENIZER_VERSION, toTokens, toChars, textRuns, singleChar, needsScan, toMatchPhrase } = require("./tokens");
 const { displayText, findRanges, termRegex, isStrictTerm } = require("./renderer/highlight");
 
 // 이미지 OCR은 한 장에 수 초가 걸린다. 아이콘 같은 작은 이미지와 시스템·앱·캐시 폴더의 이미지는 건너뛴다.
-const MIN_OCR_IMAGE_SIZE = 15 * 1024;
+// 아이콘: 긴 변이 100픽셀 미만인 이미지. (파일 크기로 거르면 6~9KB짜리 작은 캡처까지 빠진다)
+const MIN_OCR_IMAGE_SIDE = 100;
+
+async function isIconImage(filePath, fileSize) {
+  const size = await readImageSize(filePath).catch(() => null);
+  if (size) return Math.max(size.width, size.height) < MIN_OCR_IMAGE_SIDE;
+  return fileSize < 2 * 1024; // 크기를 알 수 없는 형식은 아주 작은 파일만 건너뛴다
+}
 const OCR_SKIP_PATH = /^[a-z]:\\(windows|program files|program files \(x86\)|programdata)\\|\\(appdata|node_modules|\.git|\.vscode|\.gradle|\.cache|\.m2|\.nuget|\.npm)\\/i;
 const HITS_PER_FILE = 3;
 const SNIPPET_RADIUS = 40;
@@ -179,7 +186,7 @@ async function indexContent(db, entries, options = {}) {
     } else if (stat.size > MAX_FILE_SIZE) {
       await safeSave(db, entry.path, stat, "too_large", []);
       summary.skipped += 1;
-    } else if (IMAGE_EXTENSIONS.has(entry.extension) && (stat.size < MIN_OCR_IMAGE_SIZE || OCR_SKIP_PATH.test(entry.path))) {
+    } else if (IMAGE_EXTENSIONS.has(entry.extension) && (OCR_SKIP_PATH.test(entry.path) || await isIconImage(entry.path, stat.size))) {
       await safeSave(db, entry.path, stat, "ocr_skipped", []);
       summary.skipped += 1;
     } else {

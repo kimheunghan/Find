@@ -16,7 +16,64 @@ function pythonExecutable() {
   return path.join(__dirname, "..", ".ocr-venv", "Scripts", "python.exe");
 }
 
-// Windows OCR 결과(줄 목록)를 위에서 아래, 왼쪽에서 오른쪽 순서의 조각으로 바꾼다.
+// 세로쓰기 복원: Windows OCR은 세로쓰기의 글자 하나하나는 알아보지만 가로 줄로 잘못 묶는다
+// (예: 세로 "아들홍묵", "21세", "최삼순" → "아 권 2 최 / 들 지 1 삼 / 홍 구 세").
+// 한 글자(또는 짧은 숫자) 단어를 가로 위치가 같은 것끼리 세로 줄로 모으고, 위에서 아래로 잇는다.
+// 세로로 2글자 이상 쌓인 줄만 돌려준다.
+function verticalColumns(lines) {
+  const cells = [];
+  for (const line of [].concat(lines || [])) {
+    for (const word of [].concat(line?.words || [])) {
+      const text = String(word.text || "").trim();
+      if (!text || !([...text].length === 1 || /^\p{N}{1,3}$/u.test(text))) continue;
+      cells.push({ text, cx: word.x + word.w / 2, y: word.y, w: Math.max(1, word.w), h: Math.max(1, word.h) });
+    }
+  }
+  cells.sort((a, b) => a.cx - b.cx);
+  const columns = [];
+  for (const cell of cells) {
+    const column = columns.find((item) => Math.abs(item.cx - cell.cx) <= Math.max(item.size, cell.h) * 0.6);
+    if (column) {
+      column.cells.push(cell);
+      column.cx += (cell.cx - column.cx) / column.cells.length;
+    } else {
+      columns.push({ cx: cell.cx, size: cell.h, cells: [cell] });
+    }
+  }
+  const result = [];
+  for (const column of columns) {
+    const stacked = column.cells.sort((a, b) => a.y - b.y);
+    let run = [stacked[0]];
+    const flush = () => {
+      if (run.length < 2) return;
+      const median = (values) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+      const steps = run.slice(1).map((cell, i) => cell.y - run[i].y).filter((step) => step > 0);
+      result.push({
+        x: column.cx,
+        y: run[0].y,
+        text: run.map((cell) => cell.text).join(""),
+        charWidth: median(run.map((cell) => cell.w)),
+        charHeight: median(run.map((cell) => cell.h)),
+        pitch: steps.length ? median(steps) : median(run.map((cell) => cell.h)) * 1.3
+      });
+    };
+    for (let i = 1; i < stacked.length; i += 1) {
+      const previous = stacked[i - 1];
+      const current = stacked[i];
+      // 글자 높이보다 훨씬 떨어져 있으면 다른 세로 줄로 본다
+      if (current.y - (previous.y + previous.h) > Math.max(previous.h, current.h) * 1.5) {
+        flush();
+        run = [current];
+      } else {
+        run.push(current);
+      }
+    }
+    flush();
+  }
+  return result.sort((a, b) => (a.x - b.x) || (a.y - b.y));
+}
+
+// Windows OCR 결과(가로 줄 목록)를 위에서 아래, 왼쪽에서 오른쪽 순서의 조각으로 바꾼다.
 function linesToChunks(lines) {
   return [].concat(lines || [])
     .filter((line) => line && String(line.text || "").trim())
@@ -70,7 +127,8 @@ function engine(name) {
       if (!request) continue;
       state.pending.delete(message.id);
       clearTimeout(request.timer);
-      if (message.ok) request.resolve(message.chunks || linesToChunks(message.lines));
+      state.warm = true;
+      if (message.ok) request.resolve(message);
       else request.reject(new Error(message.error || "이미지 글자를 읽지 못했습니다"));
     }
   });
@@ -88,18 +146,54 @@ function engine(name) {
   return state;
 }
 
-function extractImageText(filePath, name = DEFAULT_ENGINE) {
+// 세로쓰기 다시 읽기: 첫 판독에서 찾은 세로 줄마다 원본 좌표로 글자 칸 크기·간격을 정해,
+// 한 글자 칸씩 잘라 가로로 이어 붙인 이미지를 다시 읽는다. 첫 판독에서 빠진 아래쪽 글자까지 읽기 위해서다.
+async function readVertical(filePath, first) {
+  // 표의 숫자 칸 등이 세로 줄로 잡힐 수 있어, 한 이미지에서 다시 읽는 세로 줄 수를 제한한다.
+  const columns = verticalColumns(first.lines).slice(0, 30);
+  if (!columns.length) return [];
+  const scale = first.scale || 1;
+  const requestColumns = columns.map((column) => {
+    const size = Math.max(column.charWidth, column.charHeight) / scale;
+    const pitch = Math.max(column.pitch / scale, size);
+    const top = Math.max(0, column.y / scale - (pitch - column.charHeight / scale) / 2);
+    const width = size * 1.4;
+    const count = Math.min(80, Math.max(1, Math.floor(((first.height || top + pitch) - top) / pitch)));
+    return { x: Math.max(0, Math.round(column.x / scale - width / 2)), top: Math.round(top), width: Math.round(width), pitch: Math.round(pitch), count };
+  });
+  let texts = [];
+  try {
+    texts = (await request(filePath, "windows", { columns: requestColumns })).texts || [];
+  } catch {
+    texts = [];
+  }
+  // 다시 읽은 결과가 비면 첫 판독에서 이어 붙인 글자를 쓴다
+  return columns.map((column, index) => (String(texts[index] || "").length >= column.text.length ? texts[index] : column.text));
+}
+
+async function extractImageText(filePath, name = DEFAULT_ENGINE) {
+  const first = await request(filePath, name);
+  if (first.chunks) return first.chunks;
+  const horizontal = linesToChunks(first.lines);
+  const vertical = (await readVertical(filePath, first))
+    .filter(Boolean)
+    .map((text, index) => ({ location: { ocr: true, vertical: true, line: index + 1 }, text }));
+  return [...horizontal, ...vertical];
+}
+
+function request(filePath, name, extra = {}) {
   return new Promise((resolve, reject) => {
     const state = engine(name);
     const id = state.nextId++;
-    const timeout = TIMEOUT_MS[name];
+    // 첫 요청은 OCR 프로그램을 띄우고 모델을 불러오는 시간(메모리가 부족하면 1분 이상)까지 기다린다.
+    const timeout = state.warm ? TIMEOUT_MS[name] : 300_000;
     const timer = setTimeout(() => {
       state.pending.delete(id);
       reject(new Error(`이미지 OCR 처리 시간이 ${timeout / 1000}초를 넘었습니다`));
     }, timeout);
     state.pending.set(id, { resolve, reject, timer });
     // Windows OCR(StorageFile)은 "C:/a/b.png"처럼 /가 섞인 경로를 열지 못한다. Windows 형식 절대 경로로 넘긴다.
-    state.process.stdin.write(`${JSON.stringify({ id, path: path.resolve(filePath) })}\n`, "utf8", (error) => {
+    state.process.stdin.write(`${JSON.stringify({ id, path: path.resolve(filePath), ...extra })}\n`, "utf8", (error) => {
       if (!error) return;
       state.pending.delete(id);
       clearTimeout(timer);
@@ -117,4 +211,4 @@ function stopOcr() {
   }
 }
 
-module.exports = { ENGINE: DEFAULT_ENGINE, extractImageText, stopOcr, pythonExecutable, linesToChunks };
+module.exports = { ENGINE: DEFAULT_ENGINE, extractImageText, stopOcr, pythonExecutable, linesToChunks, verticalColumns };

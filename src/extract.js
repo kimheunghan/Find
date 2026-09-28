@@ -13,12 +13,12 @@ const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "t
 const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, ...ZIP_EXTENSIONS, ...IMAGE_EXTENSIONS, "hwp", "pdf"]);
 // 형식별 추출 방식 버전. 올리면 그 형식의 파일만 백그라운드에서 다시 추출한다 (PDF·이미지 OCR은 다시 하지 않음).
 // 2: 실제 일치한 줄·칸 위치(marks), HWP·HWPX·DOCX 쪽 번호, PPTX 발표 순서·시작 번호
-// 이미지: 2 = Windows OCR(작은 글씨 2배 확대) 빠른 판독, 3 = 빠른 판독 + PaddleOCR 정밀 판독 (PRECISE_OCR_VERSION)
+// 이미지: 4 = Windows OCR 빠른 판독(작은 글씨 2배 확대, 세로쓰기 다시 읽기), 5 = 빠른 판독 + PaddleOCR 정밀 판독 (PRECISE_OCR_VERSION)
 const EXTRACTOR_VERSIONS = {
   txt: 2, csv: 2, md: 2, log: 2, docx: 2, xlsx: 2, pptx: 2, hwpx: 2, hwp: 2,
-  png: 2, jpg: 2, jpeg: 2, gif: 2, webp: 2, bmp: 2, tif: 2, tiff: 2
+  png: 4, jpg: 4, jpeg: 4, gif: 4, webp: 4, bmp: 4, tif: 4, tiff: 4
 };
-const PRECISE_OCR_VERSION = 3;
+const PRECISE_OCR_VERSION = 5;
 
 // 정밀 판독: 두 OCR 엔진이 서로 다른 글자를 놓치므로(Windows는 작은 한글, PaddleOCR은 한자·일부 글자) 두 결과를 합친다.
 // 같은 줄은 한 번만 넣는다. 어느 한쪽이라도 맞게 읽으면 검색된다.
@@ -551,6 +551,53 @@ function extractHwp(buffer) {
   return chunks;
 }
 
+// ---- 이미지 크기 (헤더만 읽음) ----
+
+// PNG·JPEG·GIF·BMP·WEBP 헤더에서 가로·세로 픽셀을 읽는다. 알 수 없으면 null.
+function imageSize(buffer) {
+  if (buffer.length >= 24 && buffer.readUInt32BE(0) === 0x89504e47) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (buffer.length >= 10 && buffer.toString("latin1", 0, 3) === "GIF") {
+    return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+  }
+  if (buffer.length >= 26 && buffer.toString("latin1", 0, 2) === "BM") {
+    return { width: Math.abs(buffer.readInt32LE(18)), height: Math.abs(buffer.readInt32LE(22)) };
+  }
+  if (buffer.length >= 30 && buffer.toString("latin1", 0, 4) === "RIFF" && buffer.toString("latin1", 8, 12) === "WEBP") {
+    const chunk = buffer.toString("latin1", 12, 16);
+    if (chunk === "VP8X") return { width: 1 + buffer.readUIntLE(24, 3), height: 1 + buffer.readUIntLE(27, 3) };
+    if (chunk === "VP8 ") return { width: buffer.readUInt16LE(26) & 0x3fff, height: buffer.readUInt16LE(28) & 0x3fff };
+    if (chunk === "VP8L") {
+      const bits = buffer.readUInt32LE(21);
+      return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+    }
+  }
+  if (buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    // JPEG: SOF(0xC0~0xCF, 0xC4·0xC8·0xCC 제외) 표시를 찾는다
+    for (let i = 2; i + 9 < buffer.length;) {
+      if (buffer[i] !== 0xff) { i += 1; continue; }
+      const marker = buffer[i + 1];
+      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+        return { width: buffer.readUInt16BE(i + 7), height: buffer.readUInt16BE(i + 5) };
+      }
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; }
+      i += 2 + buffer.readUInt16BE(i + 2);
+    }
+  }
+  return null;
+}
+
+async function readImageSize(filePath) {
+  const handle = await fs.open(filePath, "r");
+  try {
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(65536), 0, 65536, 0);
+    return imageSize(buffer.subarray(0, bytesRead));
+  } finally {
+    await handle.close();
+  }
+}
+
 // ---- PDF ----
 
 let pdfjsPromise;
@@ -607,7 +654,7 @@ async function extractFile(filePath, options = {}) {
 
 function describeLocation(location) {
   if (!location) return "";
-  if (location.ocr) return location.line ? `이미지 OCR ${location.line}번째 줄` : "이미지 OCR";
+  if (location.ocr) return location.line ? `이미지 OCR ${location.vertical ? "세로 " : ""}${location.line}번째 줄` : "이미지 OCR";
   if (location.sheet !== undefined) return `${location.sheet} 시트 ${location.cell || ""}`.trim();
   if (location.tableFrom) return `${location.tableFrom}쪽에서 시작하는 표 안`;
   if (location.page) return `${location.page}쪽`;
@@ -618,4 +665,4 @@ function describeLocation(location) {
   return "";
 }
 
-module.exports = { MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, PRECISE_OCR_VERSION, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };
+module.exports = { imageSize, readImageSize, MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, PRECISE_OCR_VERSION, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };
