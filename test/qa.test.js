@@ -256,3 +256,16 @@ test("두 worker가 같은 DB에 동시에 써도 잠김 오류로 멈추지 않
   assert.equal(ra.extracted + rb.extracted, 60);
   assert.equal(first.prepare("SELECT COUNT(*) AS n FROM files").get().n, 60, "서로의 기록을 지우지 않는다");
 });
+
+test("검색하는 사이 조각이 지워져도(재추출 중) 오류 없이 남은 결과를 돌려준다", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "findinside-qa-vanish-"));
+  const file = path.join(dir, "a.txt");
+  await fs.writeFile(file, "최삼순 본관");
+  const localDb = openContentIndex(":memory:");
+  await indexContent(localDb, [{ name: "a.txt", path: file, kind: "file", extension: "txt" }]);
+  const original = localDb.prepare.bind(localDb);
+  // 조각 읽기 직전에 조각이 사라진 상황을 흉내 낸다
+  localDb.prepare = (sql) => (/WHERE chunks\.id = \?/.test(sql) ? { get: () => undefined } : original(sql));
+  assert.doesNotThrow(() => searchContent(localDb, ["최삼순"]));
+  assert.equal(searchContent(localDb, ["최삼순"]).size, 0);
+});

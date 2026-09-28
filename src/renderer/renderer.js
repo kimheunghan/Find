@@ -366,8 +366,24 @@ async function runSearch() {
   }
   // 검색이 겹치면 늦게 도착한 이전 검색 결과가 새 결과를 덮어쓰지 않게 마지막 요청만 그린다.
   const sequence = ++searchSequence;
-  const { items, total } = query ? await window.findInside.search(query, filters) : { items: [], total: 0 };
+  let result = { items: [], total: 0 };
+  let failed = null;
+  if (query) {
+    try {
+      result = await window.findInside.search(query, filters);
+    } catch (error) {
+      failed = error;
+    }
+  }
   if (sequence !== searchSequence) return;
+  const { items, total } = result;
+  // 검색이 실패하면 이전 화면을 그대로 두지 않고 이유를 알린다.
+  if (failed) {
+    renderResults([]);
+    resultsEl.querySelector(".empty").textContent = `검색 중 오류가 났습니다. 잠시 뒤 다시 시도하세요. (${String(failed.message || failed).replace(/^Error invoking remote method '[^']+': /, "")})`;
+    resultsEl.dataset.query = query;
+    return;
+  }
   renderResults(items, total);
   resultsEl.dataset.query = query;
 }

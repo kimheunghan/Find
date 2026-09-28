@@ -139,10 +139,19 @@ async function indexContent(db, entries, options = {}) {
   const onProgress = options.onProgress || (() => {});
   const supported = entries.filter((entry) => entry.kind === "file" && SUPPORTED_EXTENSIONS.has(entry.extension));
   // 문서를 먼저 색인하고, 오래 걸리는 이미지 OCR은 맨 뒤로 보낸다.
-  const targets = [
+  let targets = [
     ...supported.filter((entry) => !IMAGE_EXTENSIONS.has(entry.extension)),
     ...supported.filter((entry) => IMAGE_EXTENSIONS.has(entry.extension))
   ];
+  // newestFirst: 최근에 바뀐 파일부터 처리한다 (이미지 OCR은 한 장에 수 초라, 방금 만든 캡처를 먼저 찾을 수 있게).
+  if (options.newestFirst) {
+    const stamped = [];
+    for (const entry of targets) {
+      const modified = await fs.stat(entry.path).then((stat) => stat.mtimeMs, () => 0);
+      stamped.push([modified, entry]);
+    }
+    targets = stamped.sort((a, b) => b[0] - a[0]).map(([, entry]) => entry);
+  }
   // options.owns(path): 이 작업이 맡은 파일인지 (문서 worker와 OCR worker가 동시에 돌 때 서로의 기록을 지우지 않게)
   const owns = options.owns || (() => true);
   const known = new Map(db.prepare("SELECT id, path, size, modified_at, status FROM files").all()
@@ -280,6 +289,8 @@ function rowsForTerm(db, term) {
     }
     if (taken >= HITS_PER_FILE) continue;
     const row = readChunk.get(candidate.id);
+    // 검색하는 사이 색인 worker가 그 파일을 다시 추출하면 조각이 지워져 있을 수 있다. 그런 조각은 건너뛴다.
+    if (!row) continue;
     if (strict && !new RegExp(strict.source, "iu").test(displayText(row.text))) continue;
     rows.push(row);
     taken += 1;

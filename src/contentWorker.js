@@ -18,6 +18,7 @@ parentPort.on("message", async (message) => {
   try {
     const summary = await indexContent(db, message.entries, {
       owns,
+      newestFirst: workerData.group === "images",
       onProgress: (progress) => parentPort.postMessage({ type: "progress", progress })
     });
     parentPort.postMessage({ type: "done", summary });
