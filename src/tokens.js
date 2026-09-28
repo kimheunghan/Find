@@ -5,7 +5,8 @@
 // 버전 2: 영문·숫자 분리, 영문 뒤에 붙은 한글("web서버")을 한글 묶음으로 분리
 // 버전 3: 한 글자 검색용 글자 색인(chunk_chars) 추가
 // 버전 4: 한자를 한글 음으로도 색인 (全京愛 → 전경애, 金 → 금·김)
-const TOKENIZER_VERSION = 4;
+// 버전 5: 이미지 OCR 결과는 헷갈리는 모음을 같게 본 느슨한 색인(chunk_loose)도 둠 (전경애 ↔ 전경에·전경어)
+const TOKENIZER_VERSION = 5;
 const { hangulReadings } = require("./hanja");
 const CJK = "\\p{Script=Hangul}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}";
 const RUN_PATTERN = new RegExp(`[${CJK}]+|(?:(?![${CJK}])\\p{L})+|\\p{N}+`, "gu");

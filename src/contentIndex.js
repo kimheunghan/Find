@@ -6,6 +6,10 @@ const { DatabaseSync } = require("node:sqlite");
 const { readImageSize, MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, extractFile, describeLocation, resolveLocation } = require("./extract");
 const { TOKENIZER_VERSION, toTokens, toChars, textRuns, singleChar, needsScan, toMatchPhrase } = require("./tokens");
 const { displayText, findRanges, termRegex, isStrictTerm } = require("./renderer/highlight");
+const { looseText } = require("./ocrLoose");
+
+// 이미지 OCR 조각인지 (저장된 위치 JSON의 ocr 표시)
+const isOcrLocation = (location) => typeof location === "string" ? location.includes('"ocr":true') : Boolean(location?.ocr);
 
 // 이미지 OCR은 한 장에 수 초가 걸린다. 아이콘 같은 작은 이미지와 시스템·앱·캐시 폴더의 이미지는 건너뛴다.
 // 아이콘: 긴 변이 100픽셀 미만인 이미지. (파일 크기로 거르면 6~9KB짜리 작은 캡처까지 빠진다)
@@ -46,6 +50,7 @@ function openContentIndex(dbPath, { migrate = true } = {}) {
     CREATE INDEX IF NOT EXISTS chunks_file ON chunks(file_id);
     CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(tokens, content='', contentless_delete=1);
     CREATE VIRTUAL TABLE IF NOT EXISTS chunk_chars USING fts5(chars, content='', contentless_delete=1);
+    CREATE VIRTUAL TABLE IF NOT EXISTS chunk_loose USING fts5(tokens, content='', contentless_delete=1);
   `);
   // 형식별 추출 방식 버전(extract.js EXTRACTOR_VERSIONS). 예전 DB에는 열이 없어 추가한다.
   if (!db.prepare("PRAGMA table_info(files)").all().some((column) => column.name === "extractor")) {
@@ -67,11 +72,14 @@ function retokenize(db) {
   transaction(db, () => {
     db.exec("INSERT INTO chunk_fts (chunk_fts) VALUES ('delete-all')");
     db.exec("INSERT INTO chunk_chars (chunk_chars) VALUES ('delete-all')");
+    db.exec("INSERT INTO chunk_loose (chunk_loose) VALUES ('delete-all')");
     const insert = db.prepare("INSERT INTO chunk_fts (rowid, tokens) VALUES (?, ?)");
     const insertChars = db.prepare("INSERT INTO chunk_chars (rowid, chars) VALUES (?, ?)");
-    for (const row of db.prepare("SELECT id, text FROM chunks").iterate()) {
+    const insertLoose = db.prepare("INSERT INTO chunk_loose (rowid, tokens) VALUES (?, ?)");
+    for (const row of db.prepare("SELECT id, location, text FROM chunks").iterate()) {
       insert.run(row.id, toTokens(row.text).join(" "));
       insertChars.run(row.id, toChars(row.text).join(" "));
+      if (isOcrLocation(row.location)) insertLoose.run(row.id, toTokens(looseText(row.text)).join(" "));
     }
     db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('tokenizer', ?)").run(String(TOKENIZER_VERSION));
   });
@@ -80,6 +88,7 @@ function retokenize(db) {
 function removeChunks(db, fileId) {
   db.prepare("DELETE FROM chunk_fts WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)").run(fileId);
   db.prepare("DELETE FROM chunk_chars WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)").run(fileId);
+  db.prepare("DELETE FROM chunk_loose WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)").run(fileId);
   db.prepare("DELETE FROM chunks WHERE file_id = ?").run(fileId);
 }
 
@@ -117,10 +126,12 @@ function saveFile(db, filePath, stat, status, chunks, error, extractorOverride) 
     const insertChunk = db.prepare("INSERT INTO chunks (file_id, location, text) VALUES (?, ?, ?)");
     const insertTokens = db.prepare("INSERT INTO chunk_fts (rowid, tokens) VALUES (?, ?)");
     const insertChars = db.prepare("INSERT INTO chunk_chars (rowid, chars) VALUES (?, ?)");
+    const insertLoose = db.prepare("INSERT INTO chunk_loose (rowid, tokens) VALUES (?, ?)");
     for (const chunk of chunks) {
       const chunkId = insertChunk.run(fileId, JSON.stringify(chunk.location || null), chunk.text).lastInsertRowid;
       insertTokens.run(chunkId, toTokens(chunk.text).join(" "));
       insertChars.run(chunkId, toChars(chunk.text).join(" "));
+      if (isOcrLocation(chunk.location)) insertLoose.run(chunkId, toTokens(looseText(chunk.text)).join(" "));
     }
   });
 }
@@ -220,9 +231,9 @@ async function indexContent(db, entries, options = {}) {
 
 // 미리보기는 정규화한 글자(displayText)에서 잘라 낸다. 원문과 정규화 결과의 글자 수가 달라
 // 강조 위치가 밀리는 문제(예: "사양" 검색에 "양과"가 강조됨)를 막는다.
-function makeSnippet(rawText, term) {
+function makeSnippet(rawText, term, options = {}) {
   const text = displayText(rawText);
-  const [range] = findRanges(text, [term]);
+  const [range] = findRanges(text, [term], options);
   if (!range) {
     const head = text.slice(0, SNIPPET_RADIUS * 2).replace(/\s+/g, " ");
     return { before: head, match: "", after: text.length > SNIPPET_RADIUS * 2 ? "…" : "" };
@@ -273,10 +284,13 @@ function rowsForTerm(db, term) {
   } else {
     const phrase = toMatchPhrase(term);
     if (!phrase) return [];
+    // 이미지 OCR 조각은 헷갈리는 모음을 같게 본 느슨한 색인으로도 찾는다 (전경애 ↔ 전경에·전경어)
     candidates = db.prepare(`
-      SELECT chunks.id, chunks.file_id FROM chunk_fts JOIN chunks ON chunks.id = chunk_fts.rowid
-      WHERE chunk_fts MATCH ? ORDER BY chunks.file_id, chunks.id
-    `).all(phrase);
+      SELECT chunks.id, chunks.file_id FROM chunks WHERE chunks.id IN (
+        SELECT rowid FROM chunk_fts WHERE chunk_fts MATCH ?
+        UNION SELECT rowid FROM chunk_loose WHERE chunk_loose MATCH ?
+      ) ORDER BY chunks.file_id, chunks.id
+    `).all(phrase, toMatchPhrase(looseText(term)) || phrase);
   }
 
   // IP·번호처럼 문장부호가 든 검색어는 글자 그대로 들어 있는 조각만 인정한다 ("10.0.3.21" ≠ "10,0,3,21").
@@ -318,7 +332,7 @@ function searchContent(db, terms) {
       match.terms.add(term);
       if (match.hits.length < HITS_PER_FILE && !match.chunkIds.has(row.id)) {
         match.chunkIds.add(row.id);
-        const snippet = makeSnippet(row.text, term);
+        const snippet = makeSnippet(row.text, term, { loose: isOcrLocation(row.location) });
         match.hits.push({ location: describeLocation(resolveLocation(JSON.parse(row.location), snippet.at)), snippet });
       }
     }

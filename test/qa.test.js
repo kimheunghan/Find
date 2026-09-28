@@ -286,3 +286,27 @@ test("한자 이름을 한글 음으로 찾는다 (OCR이 한글을 틀려도 �
     assert.equal(results[0].hits[0].snippet.match, hanja, `${query} 강조는 한자에`);
   }
 });
+
+test("이미지 OCR이 모음을 헷갈려도(애·에·어) 찾되, 일반 문서에는 적용하지 않는다", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "findinside-qa-loose-"));
+  const doc = path.join(dir, "문서.txt");
+  await fs.writeFile(doc, "전경에 관한 보고");
+  const localDb = openContentIndex(":memory:");
+  const local = [{ name: "문서.txt", path: doc, kind: "file", extension: "txt" }];
+  await indexContent(localDb, local);
+  // OCR 조각을 직접 넣는다 (OCR이 "전경애"를 "전경어"로 읽은 경우)
+  const ocrFile = path.join(dir, "캡처.png");
+  localDb.prepare("INSERT INTO files (path, size, modified_at, status) VALUES (?, 1, 1, 'done')").run(ocrFile);
+  const fileId = localDb.prepare("SELECT id FROM files WHERE path = ?").get(ocrFile).id;
+  const chunkId = localDb.prepare("INSERT INTO chunks (file_id, location, text) VALUES (?, ?, ?)")
+    .run(fileId, JSON.stringify({ ocr: true, line: 1 }), "30세대 • 전경어").lastInsertRowid;
+  const { toTokens } = require("../src/tokens");
+  const { looseText } = require("../src/ocrLoose");
+  localDb.prepare("INSERT INTO chunk_fts (rowid, tokens) VALUES (?, ?)").run(chunkId, toTokens("30세대 • 전경어").join(" "));
+  localDb.prepare("INSERT INTO chunk_loose (rowid, tokens) VALUES (?, ?)").run(chunkId, toTokens(looseText("30세대 • 전경어")).join(" "));
+
+  const all = [...local, { name: "캡처.png", path: ocrFile, kind: "file", extension: "png" }];
+  const results = searchEntries(all, "전경애", {}, 200, searchContent(localDb, tokenize("전경애")));
+  assert.deepEqual(results.map((item) => item.name), ["캡처.png"], "일반 문서의 '전경에'는 찾지 않는다");
+  assert.equal(results[0].hits[0].snippet.match, "전경어");
+});

@@ -40,23 +40,30 @@
   // Node(색인·본문 미리보기)에서는 한자를 한글 음으로도 맞춰 본다 (全京愛 ↔ 전경애). 음으로 바꾼 글자열은
   // 원문과 길이가 같아 찾은 위치를 그대로 한자 강조에 쓴다. 화면(브라우저)에서는 제목·경로만 강조하므로 쓰지 않는다.
   let hangulReadings = () => [];
+  let looseText = null;
   if (typeof module === "object" && module.exports && typeof require === "function") {
     try {
       hangulReadings = require("../hanja").hangulReadings;
+      looseText = require("../ocrLoose").looseText;
     } catch {
       // 한자음 데이터가 없으면 원문만 맞춰 본다
     }
   }
 
-  function findRanges(text, terms) {
+  // options.loose: 이미지 OCR 결과처럼 모음을 헷갈린 글자(애·에·어)도 같은 글자로 본다.
+  function findRanges(text, terms, options = {}) {
     const ranges = [];
     const variants = [text, ...hangulReadings(text)];
+    const loose = options.loose && looseText;
     for (const term of terms) {
-      const pattern = termRegex(term);
-      if (!pattern) continue;
-      for (const variant of variants) {
-        for (const match of variant.matchAll(pattern)) {
-          if (match[0].length) ranges.push([match.index, match.index + match[0].length]);
+      const pairs = [[termRegex(term), variants]];
+      if (loose) pairs.push([termRegex(looseText(term)), variants.map(looseText)]);
+      for (const [pattern, targets] of pairs) {
+        if (!pattern) continue;
+        for (const variant of targets) {
+          for (const match of variant.matchAll(pattern)) {
+            if (match[0].length) ranges.push([match.index, match.index + match[0].length]);
+          }
         }
       }
     }
