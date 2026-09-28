@@ -362,7 +362,7 @@ function renderFilters() {
 function describeSearch(query) {
   if (source === "mail") {
     const folders = selectedMailFolders.map((key) => folderLabel(key.split("	")[1]));
-    return `“${query}” · ${folders.length ? folders.join(", ") : "모든 메일 폴더"} (제목·보낸 사람·받는 사람·본문·첨부)`;
+    return `“${query}” · ${folders.length ? folders.join(", ") : "모든 편지함"} (제목·보낸 사람·받는 사람·본문·첨부)`;
   }
   const parts = [];
   parts.push(filters.scopes.length ? filters.scopes.join(", ") : "전체 검색 위치");
@@ -595,7 +595,7 @@ function renderMailFolders() {
   row.className = "mailFolders";
   if (!mailFolders.length) return row;
   const label = document.createElement("span");
-  label.textContent = "검색할 폴더";
+  label.textContent = "편지함 선택";
   const chip = (text, pressed, onClick) => {
     const element = document.createElement("button");
     element.type = "button";
