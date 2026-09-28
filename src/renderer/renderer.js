@@ -320,7 +320,7 @@ function loadFilterPanelOpen() {
 function setFilterPanelOpen(open) {
   filterPanelEl.hidden = !open;
   filterToggleEl.setAttribute("aria-expanded", String(open));
-  filterToggleEl.textContent = open ? "상세 조건 닫기 ×" : "상세 조건 열기";
+  filterToggleEl.textContent = open ? "상세 조건 접기 ▴" : "상세 조건 펼치기 ▾";
   try {
     localStorage.setItem("filterPanelOpen", open ? "1" : "0");
   } catch {

@@ -53,7 +53,7 @@ header { position: relative; z-index: 12; max-width: 900px; margin: 0 auto; }
 .chip button { border: 0; padding: 0 4px; color: #9fb1ff; background: transparent; cursor: pointer; font-size: 13px; }
 .chip button:hover { color: #fff; }
 .linkButton { border: 0; padding: 4px; color: #91a7ff; background: transparent; cursor: pointer; font-size: 12px; }
-.filterPanel { position: fixed; z-index: 30; top: 52px; right: 18px; bottom: 18px; width: min(540px, calc(100vw - 36px)); display: grid; align-content: start; gap: 18px; overflow-y: auto; padding: 22px; border: 1px solid #415173; border-radius: 14px; background: #111828; box-shadow: 0 22px 55px #000; isolation: isolate; }
+.filterPanel { position: absolute; z-index: 30; top: calc(100% + 10px); left: 0; right: 0; display: grid; gap: 14px; max-height: min(520px, calc(100vh - 180px)); overflow-y: auto; padding: 16px 18px; border: 1px solid #415173; border-radius: 12px; background: #111828; box-shadow: 0 22px 55px #000; isolation: isolate; }
 .filterRow { display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: start; }
 .filterRow h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: #aeb8ce; }
 .optionButtons { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -65,7 +65,7 @@ header { position: relative; z-index: 12; max-width: 900px; margin: 0 auto; }
 .extensionInput { width: 260px; margin-top: 8px; padding: 6px 10px; border: 1px solid #2c3854; border-radius: 7px; outline: 0; color: #f4f6ff; background: #121a2b; font-size: 13px; }
 .extensionInput:focus { border-color: #5b7cfa; }
 #hint.warn { color: #f0b86e; }
-@media (max-width: 850px) { .filterRow { grid-template-columns: 1fr; gap: 6px; } .filterPanel { top: 46px; right: 10px; bottom: 10px; width: calc(100vw - 20px); } }
+@media (max-width: 850px) { .filterRow { grid-template-columns: 1fr; gap: 6px; } }
 .hits { grid-column: 1 / -1; margin: -4px 0 0; padding: 0 16px 12px 63px; list-style: none; display: grid; gap: 4px; }
 .hits[hidden], .filterPanel[hidden] { display: none; }
 .hits li { display: flex; gap: 8px; min-width: 0; color: #aab4ca; font-size: 12.5px; line-height: 1.5; }
