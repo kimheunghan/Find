@@ -4,6 +4,7 @@
 // 이 worker가 자기 DB 연결로 색인을 쓰고, 메인 프로세스는 검색용으로 읽기만 한다 (WAL).
 const { parentPort, workerData } = require("node:worker_threads");
 const { openContentIndex, indexContent } = require("./contentIndex");
+const { stopOcr } = require("./ocr");
 
 const db = openContentIndex(workerData.dbPath);
 
@@ -16,5 +17,7 @@ parentPort.on("message", async (message) => {
     parentPort.postMessage({ type: "done", summary });
   } catch (error) {
     parentPort.postMessage({ type: "error", message: error.message });
+  } finally {
+    stopOcr();
   }
 });

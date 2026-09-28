@@ -7,7 +7,10 @@ const os = require("node:os");
 const path = require("node:path");
 const zlib = require("node:zlib");
 const { toTokens, needsScan, toMatchPhrase } = require("../src/tokens");
-const { extractFile } = require("../src/extract");
+const { extractFile, resolveLocation, describeLocation } = require("../src/extract");
+// 조각 첫 위치만 비교한다 (조각 안 위치 표시 marks는 따로 검사).
+const plain = (chunks) => chunks.map(({ location, text }) => ({ location: resolveLocation(location, 0), text }));
+
 const { openContentIndex, indexContent, searchContent } = require("../src/contentIndex");
 const { searchEntries, tokenize } = require("../src/search");
 
@@ -56,9 +59,15 @@ async function tempDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "findinside-"));
 }
 
-test("한국어는 2글자 단위, 영문·숫자는 단어 단위로 토큰을 만든다", () => {
-  assert.deepEqual(toTokens("서버구축 WEB01 10.0.3.21"), ["서버", "버구", "구축", "web01", "10", "0", "3", "21"]);
+test("한국어는 2글자 단위, 영문·숫자는 서로 나눈 단어 단위로 토큰을 만든다", () => {
+  assert.deepEqual(toTokens("서버구축 WEB01 10.0.3.21"), ["서버", "버구", "구축", "web", "01", "10", "0", "3", "21"]);
+  // OCR이 붙여 읽은 글자, 영문 뒤에 붙은 한글도 나눈다
+  assert.deepEqual(toTokens("WEB01IP10.0.3.21"), ["web", "01", "ip", "10", "0", "3", "21"]);
+  assert.deepEqual(toTokens("web서버"), ["web", "서버"]);
   assert.equal(toMatchPhrase("서버의"), '"서버 버의"');
+  // 영문으로 끝나면 앞부분 일치, 숫자(IP 등)는 정확히
+  assert.equal(toMatchPhrase("web"), '"web"*');
+  assert.equal(toMatchPhrase("10.0.3.2"), '"10 0 3 2"');
   assert.equal(needsScan("사"), true);
   assert.equal(needsScan("서버"), false);
 });
@@ -86,12 +95,19 @@ test("DOCX·PPTX·XLSX·HWPX에서 텍스트와 내부 위치를 추출한다", 
     "Contents/section0.xml": "<hs:sec><hp:p id=\"1\"><hp:run><hp:t>설치 정보</hp:t></hp:run></hp:p></hs:sec>"
   }));
 
-  assert.deepEqual(await extractFile(docx), [{ location: { paragraph: 1 }, text: "운영 서버 목록\nIP & 사양" }]);
+  const docxChunks = await extractFile(docx);
+  assert.deepEqual(plain(docxChunks), [{ location: { paragraph: 1 }, text: "운영 서버 목록\nIP & 사양" }]);
+  // 조각 안 둘째 문단에서 일치하면 2번째 문단으로 표시한다
+  assert.equal(describeLocation(resolveLocation(docxChunks[0].location, docxChunks[0].text.indexOf("사양"))), "2번째 문단");
   assert.deepEqual(await extractFile(pptx), [
     { location: { slide: 1 }, text: "표지" },
     { location: { slide: 2 }, text: "둘째 장 견적" }
   ]);
-  assert.deepEqual(await extractFile(xlsx), [{ location: { sheet: "서버", cell: "B4" }, text: "WEB SERVER | CPU 8core | 64" }]);
+  const xlsxChunks = await extractFile(xlsx);
+  assert.deepEqual(plain(xlsxChunks), [{ location: { sheet: "서버", cell: "B4" }, text: "WEB SERVER | CPU 8core | 64" }]);
+  // 행 안에서 실제 일치한 칸을 표시한다
+  assert.equal(describeLocation(resolveLocation(xlsxChunks[0].location, xlsxChunks[0].text.indexOf("8core"))), "서버 시트 C4");
+  assert.equal(describeLocation(resolveLocation(xlsxChunks[0].location, xlsxChunks[0].text.indexOf("64"))), "서버 시트 D4");
   assert.deepEqual(await extractFile(hwpx), [{ location: { section: 1, paragraph: 1 }, text: "설치 정보" }]);
 });
 
@@ -119,7 +135,8 @@ test("HWP 5.0 본문 문단과 위치를 추출하고 제어 문자는 건너뛴
   const file = path.join(dir, "확인서.hwp");
   await fs.writeFile(file, CFB.write(doc, { type: "buffer" }));
 
-  assert.deepEqual(await extractFile(file), [{ location: { section: 1, paragraph: 1 }, text: "장비 설치 확인\n둘째 문단" }]);
+  // 줄 배치 정보가 없으면 쪽을 추정하지 않고 문단 번호로 표시한다
+  assert.deepEqual(plain(await extractFile(file)), [{ location: { section: 1, paragraph: 1 }, text: "장비 설치 확인\n둘째 문단" }]);
 });
 
 test("CP949로 저장된 한국어 텍스트 파일을 읽는다", async () => {
@@ -151,7 +168,7 @@ test("파일 내용으로 검색하고, 변경되지 않은 파일은 다시 추
   const results = searchEntries(entries, query, {}, 200, searchContent(db, tokenize(query)));
   assert.deepEqual(results.map((item) => item.name), ["설치정보.txt"]);
   assert.deepEqual(results[0].matchedIn, ["content"]);
-  assert.equal(results[0].hits[0].location, "1번째 줄");
+  assert.equal(results[0].hits[0].location, "2번째 줄", "조각 첫 줄이 아니라 실제로 일치한 줄");
   assert.equal(results[0].hits[0].snippet.match, "서버");
 
   // 검색 범위 조건은 내용 검색 결과에도 적용된다
@@ -176,4 +193,22 @@ test("한 글자 검색어는 색인 대신 본문을 훑어 찾는다", async (
   const db = openContentIndex(":memory:");
   await indexContent(db, [{ name: "a.txt", path: file, kind: "file", extension: "txt" }]);
   assert.equal(searchContent(db, ["과"]).size, 1);
+});
+
+test("아이콘 같은 작은 이미지와 시스템 폴더 이미지는 OCR하지 않고, 문서를 먼저 색인한다", async () => {
+  const dir = await tempDir();
+  const icon = path.join(dir, "icon.png");
+  await fs.writeFile(icon, Buffer.alloc(1024));
+  const doc = path.join(dir, "a.txt");
+  await fs.writeFile(doc, "견적");
+  const db = openContentIndex(":memory:");
+  const order = [];
+  const summary = await indexContent(db, [
+    { name: "icon.png", path: icon, kind: "file", extension: "png" },
+    { name: "a.txt", path: doc, kind: "file", extension: "txt" }
+  ], { onProgress: (progress) => order.push(path.basename(progress.current)) });
+  assert.equal(summary.extracted, 1);
+  assert.equal(summary.skipped, 1);
+  assert.deepEqual(order, ["icon.png"]);
+  assert.equal(db.prepare("SELECT status FROM files WHERE path = ?").get(icon).status, "ocr_skipped");
 });

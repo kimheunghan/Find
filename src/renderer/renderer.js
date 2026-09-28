@@ -16,9 +16,11 @@ const clearFiltersEl = document.querySelector("#clearFilters");
 const scopeOptionsEl = document.querySelector("#scopeOptions");
 const extensionSelectEl = document.querySelector("#extensionSelect");
 const extensionInputEl = document.querySelector("#extensionInput");
+const extensionTagsEl = document.querySelector("#extensionTags");
 let roots = [];
 let excludedPaths = [];
 let timer;
+let searchSequence = 0;
 let filters = { scopes: [], kind: "all", extensions: [] };
 
 const menuItems = {
@@ -99,10 +101,24 @@ function renderExcludes() {
   });
 }
 
-function renderHits(list, hits) {
+// 일치한 곳의 앞뒤 단어까지 붙여 문서에서 찾기 쉬운 문구를 만든다. 예: "…매핑 기술 " + "사양" + "서 · 질의…" → "기술 사양서"
+function findPhrase(snippet) {
+  const before = snippet.before.replace(/…/g, "").match(/(\S+\s?)$/u)?.[1] || "";
+  const after = snippet.after.replace(/…/g, "").match(/^(\S*)/u)?.[1] || "";
+  return `${before}${snippet.match}${after}`.trim();
+}
+
+function renderHits(list, hits, item) {
   list.hidden = !hits.length;
   for (const hit of hits) {
     const line = document.createElement("li");
+    const phrase = findPhrase(hit.snippet);
+    line.title = `눌러서 문서 열기 — "${phrase}"을(를) 복사해 둡니다. 문서에서 Ctrl+F 후 Ctrl+V로 찾으세요.`;
+    line.addEventListener("click", async () => {
+      await window.findInside.openAt(item.path, phrase);
+      hintEl.classList.remove("warn");
+      hintEl.textContent = `"${phrase}" 복사됨 — 문서에서 Ctrl+F 후 Ctrl+V로 찾으세요 (${hit.location})`;
+    });
     if (hit.location) {
       const where = document.createElement("span");
       where.className = "where";
@@ -118,9 +134,31 @@ function renderHits(list, hits) {
   }
 }
 
-function renderResults(items) {
+// 제목·경로도 본문과 같은 규칙(highlight.js)으로 검색어를 강조한다. textContent 기반이라 파일명에 HTML이 있어도 안전하다.
+function renderHighlighted(element, value, terms) {
+  const text = FindHighlight.displayText(value);
+  const nodes = [];
+  let cursor = 0;
+  for (const [start, end] of FindHighlight.findRanges(text, terms)) {
+    if (start > cursor) nodes.push(document.createTextNode(text.slice(cursor, start)));
+    const mark = document.createElement("mark");
+    mark.textContent = text.slice(start, end);
+    nodes.push(mark);
+    cursor = end;
+  }
+  if (cursor < text.length) nodes.push(document.createTextNode(text.slice(cursor)));
+  element.replaceChildren(...nodes);
+}
+
+function renderResults(items, total = items.length) {
   resultsEl.replaceChildren();
-  countEl.textContent = items.length;
+  countEl.textContent = total.toLocaleString();
+  if (total > items.length) {
+    const more = document.createElement("div");
+    more.className = "moreNotice";
+    more.textContent = `관련도 높은 ${items.length.toLocaleString()}개만 표시합니다. 검색어를 더 넣거나 상세 조건으로 범위를 좁혀 보세요.`;
+    resultsEl.append(more);
+  }
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
@@ -129,16 +167,17 @@ function renderResults(items) {
     return;
   }
 
+  const terms = FindHighlight.queryTerms(queryEl.value);
   for (const item of items) {
     const row = template.content.firstElementChild.cloneNode(true);
     row.querySelector(".icon").textContent = item.kind === "folder" ? "▰" : "▤";
-    row.querySelector(".name").textContent = item.name;
-    row.querySelector(".path").textContent = item.path;
+    renderHighlighted(row.querySelector(".name"), item.name, terms);
+    renderHighlighted(row.querySelector(".path"), item.path, terms);
     row.querySelector(".type").textContent = [
       item.matchedIn?.includes("content") ? "내용 일치" : "",
       item.kind === "folder" ? "폴더" : item.extension || "파일"
     ].filter(Boolean).join(" · ");
-    renderHits(row.querySelector(".hits"), item.hits || []);
+    renderHits(row.querySelector(".hits"), item.hits || [], item);
     row.querySelector(".open").addEventListener("click", () => window.findInside.openItem(item.path));
     row.querySelector(".show").addEventListener("click", () => window.findInside.showInFolder(item.path));
     resultsEl.append(row);
@@ -278,12 +317,29 @@ function scopeControl(scope) {
 function renderFilters() {
   scopeOptionsEl.replaceChildren(...scopeCandidates().map(scopeControl));
 
-  extensionSelectEl.value = filters.extensions.length === 1 ? filters.extensions[0] : "";
-  if (document.activeElement !== extensionInputEl) extensionInputEl.value = filters.extensions.join(", ");
+  // 확장자는 여러 개를 태그로 보여 주고, 태그마다 ×로 뺄 수 있다.
+  extensionSelectEl.value = "";
+  const tags = filters.extensions.map((extension) => {
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    const label = document.createElement("span");
+    label.textContent = extension.toUpperCase();
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.title = `${extension.toUpperCase()} 빼기`;
+    remove.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleExtension(extension);
+    });
+    tag.append(label, remove);
+    return tag;
+  });
+  extensionTagsEl.replaceChildren(...tags, extensionInputEl);
 
   const chips = filters.scopes.map((scope) => chip(`범위: ${scope}`, () => toggleScope(scope)));
   for (const extension of filters.extensions) {
-    chips.push(chip(extension.toUpperCase(), () => toggleExtension(extension)));
+    chips.push(chip(`형식: ${extension.toUpperCase()}`, () => toggleExtension(extension)));
   }
   filterChipsEl.replaceChildren(...chips);
   clearFiltersEl.hidden = !hasFilters();
@@ -308,7 +364,12 @@ async function runSearch() {
       ? `${describeSearch(query)}${contentIndexing ? " · 내용 색인 진행 중" : ""}`
       : "검색어를 입력하세요.";
   }
-  renderResults(query ? await window.findInside.search(query, filters) : []);
+  // 검색이 겹치면 늦게 도착한 이전 검색 결과가 새 결과를 덮어쓰지 않게 마지막 요청만 그린다.
+  const sequence = ++searchSequence;
+  const { items, total } = query ? await window.findInside.search(query, filters) : { items: [], total: 0 };
+  if (sequence !== searchSequence) return;
+  renderResults(items, total);
+  resultsEl.dataset.query = query;
 }
 
 function onFiltersChanged() {
@@ -365,15 +426,35 @@ document.querySelector("#addScope").addEventListener("click", async () => {
   onFiltersChanged();
 });
 
+// 목록에서 고르면 기존 확장자에 더한다 (바꾸지 않는다).
 extensionSelectEl.addEventListener("change", () => {
-  setExtensions(extensionSelectEl.value ? [extensionSelectEl.value] : []);
+  if (!extensionSelectEl.value) return;
+  setExtensions([...filters.extensions, extensionSelectEl.value]);
   onFiltersChanged();
 });
 
-extensionInputEl.addEventListener("change", () => {
-  setExtensions(extensionInputEl.value.split(/[\s,;]+/));
+// 직접 입력: Enter·쉼표·띄어쓰기로 추가, 빈 칸에서 Backspace를 누르면 마지막 확장자를 뺀다.
+function addTypedExtensions() {
+  const typed = extensionInputEl.value.split(/[\s,;]+/).filter(Boolean);
+  extensionInputEl.value = "";
+  if (!typed.length) return;
+  setExtensions([...filters.extensions, ...typed]);
   onFiltersChanged();
+  extensionInputEl.focus();
+}
+
+extensionInputEl.addEventListener("keydown", (event) => {
+  if (event.isComposing) return;
+  if (event.key === "Enter" || event.key === "," || event.key === " ") {
+    event.preventDefault();
+    addTypedExtensions();
+  } else if (event.key === "Backspace" && !extensionInputEl.value && filters.extensions.length) {
+    toggleExtension(filters.extensions[filters.extensions.length - 1]);
+    extensionInputEl.focus();
+  }
 });
+extensionInputEl.addEventListener("blur", () => { if (extensionInputEl.value.trim()) addTypedExtensions(); });
+extensionTagsEl.addEventListener("click", () => extensionInputEl.focus());
 
 // 한글 조합 중(ㅅ→서→설)에는 자모마다 검색하지 않고, 입력이 잠시 멈췄을 때 한 번만 검색한다.
 function scheduleSearch() {

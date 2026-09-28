@@ -2,4 +2,7 @@ node_modules/
 .npm-cache/
 dist/
 .findinside/
+.ocr-venv/
+.ocr-models/
 *.log
+.qa-ocr/

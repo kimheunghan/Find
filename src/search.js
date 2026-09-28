@@ -70,7 +70,10 @@ function scoreKeys({ name, path }, kind, tokens, contentMatch) {
   let contentMatched = false;
 
   for (const token of tokens) {
-    const inName = name.includes(token) || path.includes(token);
+    // 따옴표로 묶은 "설치 정보"는 띄어쓰기 없이 쓴 "설치정보"와도 일치로 본다.
+    const compact = /\s/.test(token) ? token.replace(/\s+/g, "") : null;
+    const inName = name.includes(token) || path.includes(token)
+      || Boolean(compact && path.replace(/\s+/g, "").includes(compact));
     const inContent = Boolean(contentMatch && contentMatch.terms.has(token));
     if (!inName && !inContent) return null;
     if (inName) {
@@ -104,7 +107,8 @@ function normalizedKeys(entries) {
   return keys;
 }
 
-function searchEntries(entries, query, filters = {}, limit = 200, contentMatches = new Map()) {
+// stats를 넘기면 상한(limit)과 관계없이 일치한 전체 개수를 stats.total에 담는다.
+function searchEntries(entries, query, filters = {}, limit = 200, contentMatches = new Map(), stats = {}) {
   const tokens = tokenize(query);
   if (!tokens.length) return [];
 
@@ -126,6 +130,7 @@ function searchEntries(entries, query, filters = {}, limit = 200, contentMatches
     if (result) found.push({ entry, contentMatch, result });
   }
 
+  stats.total = found.length;
   return found
     .sort((a, b) => b.result.score - a.result.score || a.entry.name.localeCompare(b.entry.name))
     .slice(0, limit)

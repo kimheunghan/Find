@@ -1,0 +1,60 @@
+"use strict";
+
+// 이미지 OCR 본문 검수: 한글·영문·숫자가 섞인 이미지를 만들어 실제 OCR로 색인하고 검색·강조를 확인한다.
+// 실행: npm run setup:ocr 후 `npm run qa:ocr` (Python OCR 필요, 수십 초 걸림)
+const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const path = require("node:path");
+const { execFileSync } = require("node:child_process");
+const { pythonExecutable, stopOcr } = require("../src/ocr");
+const { openContentIndex, indexContent, searchContent } = require("../src/contentIndex");
+const { searchEntries, tokenize } = require("../src/search");
+const { termRegex } = require("../src/renderer/highlight");
+
+const dir = path.join(__dirname, "..", ".qa-ocr");
+const draw = `
+import sys
+from PIL import Image, ImageDraw, ImageFont
+font = ImageFont.truetype(r"C:\\Windows\\Fonts\\malgun.ttf", 40)
+lines = ["장비 설치 확인서", "서버 사양: CPU 8core / RAM 64GB", "WEB01 IP 10.0.3.21", "운영 서버 점검 결과"]
+image = Image.new("RGB", (1100, 60 + 70 * len(lines)), "white")
+d = ImageDraw.Draw(image)
+for i, line in enumerate(lines):
+    d.text((40, 30 + 70 * i), line, fill="black", font=font)
+image.save(sys.argv[1])
+image.convert("L").save(sys.argv[2], quality=90)
+`;
+
+(async () => {
+  await fs.mkdir(dir, { recursive: true });
+  const png = path.join(dir, "스캔_설치확인.png");
+  const jpg = path.join(dir, "스캔 사본.jpg");
+  execFileSync(pythonExecutable(), ["-c", draw, png, jpg], { env: { ...process.env, PYTHONUTF8: "1" } });
+  const entries = [png, jpg].map((file) => ({ name: path.basename(file), path: file, kind: "file", extension: path.extname(file).slice(1) }));
+
+  const db = openContentIndex(":memory:");
+  const started = Date.now();
+  const summary = await indexContent(db, entries);
+  stopOcr();
+  console.log("OCR 색인", summary, `${((Date.now() - started) / 1000).toFixed(1)}초`);
+  assert.equal(summary.extracted, 2, "두 이미지 모두 OCR되어야 한다");
+
+  const cases = [
+    ["설치", 2], ["사양", 2], ["치", 2], ["10.0.3.21", 2], ["8core", 2],
+    ["운영 서버", 2], ['"운영 서버"', 2], ["web01", 2], ["점검 결과", 2], ["없는단어", 0]
+  ];
+  let failed = 0;
+  for (const [query, expected] of cases) {
+    const results = searchEntries(entries, query, {}, 200, searchContent(db, tokenize(query)));
+    const hits = results.flatMap((item) => item.hits.map((hit) => ({ name: item.name, ...hit })));
+    const badMark = hits.find((hit) => !tokenize(query).some((term) => new RegExp(`^(?:${termRegex(term).source})$`, "iu").test(hit.snippet.match)));
+    const ok = results.length === expected && !badMark && hits.every((hit) => hit.location.startsWith("이미지 OCR"));
+    if (!ok) failed += 1;
+    console.log(`${ok ? "✔" : "✖"} ${query}: ${results.length}/${expected}개`, hits.slice(0, 2).map((hit) => `[${hit.location}] ${hit.snippet.before}〔${hit.snippet.match}〕${hit.snippet.after}`).join(" / "));
+  }
+  await fs.rm(dir, { recursive: true, force: true });
+  if (failed) {
+    console.log(`실패 ${failed}건`);
+    process.exitCode = 1;
+  }
+})();

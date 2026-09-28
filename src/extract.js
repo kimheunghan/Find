@@ -3,12 +3,17 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const zlib = require("node:zlib");
+const { extractImageText } = require("./ocr");
 
 const MAX_FILE_SIZE = 30 * 1024 * 1024;
 const CHUNK_CHARS = 800;
 const TEXT_EXTENSIONS = new Set(["txt", "csv", "md", "log"]);
 const ZIP_EXTENSIONS = new Set(["docx", "xlsx", "pptx", "hwpx"]);
-const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, ...ZIP_EXTENSIONS, "hwp", "pdf"]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff"]);
+const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, ...ZIP_EXTENSIONS, ...IMAGE_EXTENSIONS, "hwp", "pdf"]);
+// 형식별 추출 방식 버전. 올리면 그 형식의 파일만 백그라운드에서 다시 추출한다 (PDF·이미지 OCR은 다시 하지 않음).
+// 2: 실제 일치한 줄·칸 위치(marks), HWP·HWPX·DOCX 쪽 번호, PPTX 발표 순서·시작 번호
+const EXTRACTOR_VERSIONS = { txt: 2, csv: 2, md: 2, log: 2, docx: 2, xlsx: 2, pptx: 2, hwpx: 2, hwp: 2 };
 
 // ---- 텍스트 파일 ----
 
@@ -24,26 +29,49 @@ function decodeText(buffer) {
   }
 }
 
-// 줄을 모아 적당한 길이의 조각으로 나누고, 조각이 시작하는 줄 번호를 위치로 남긴다.
+// 줄을 모아 적당한 길이의 조각으로 나눈다. 조각 안에서 위치 표시(줄·문단·쪽)가 바뀌는 곳은
+// marks에 [조각 안 글자 위치, 위치]로 남겨, 조각 첫 줄이 아니라 실제로 일치한 줄의 위치를 보여 준다 (resolveLocation).
 function chunkLines(lines, makeLocation) {
   const chunks = [];
   let buffer = [];
   let size = 0;
-  let start = 0;
+  let marks = [];
+  let lastLabel = null;
+  const flush = () => {
+    if (!buffer.length) return;
+    const location = marks.length > 1 ? { ...marks[0][1], marks } : marks[0][1];
+    chunks.push({ location, text: buffer.join("\n") });
+    buffer = [];
+    size = 0;
+    marks = [];
+    lastLabel = null;
+  };
   lines.forEach((line, index) => {
     const text = line.trim();
     if (!text) return;
-    if (!buffer.length) start = index;
+    const location = makeLocation(index);
+    const label = describeLocation(location);
+    if (label !== lastLabel) {
+      marks.push([size + buffer.length, location]);
+      lastLabel = label;
+    }
     buffer.push(text);
     size += text.length;
-    if (size >= CHUNK_CHARS) {
-      chunks.push({ location: makeLocation(start), text: buffer.join("\n") });
-      buffer = [];
-      size = 0;
-    }
+    if (size >= CHUNK_CHARS) flush();
   });
-  if (buffer.length) chunks.push({ location: makeLocation(start), text: buffer.join("\n") });
+  flush();
   return chunks;
+}
+
+// 조각 안 글자 위치(at)에 해당하는 실제 위치를 고른다. marks가 없으면 조각의 위치 그대로다.
+function resolveLocation(location, at) {
+  if (!location || !Array.isArray(location.marks) || at === undefined || at === null) return location;
+  let current = location.marks[0][1];
+  for (const [offset, mark] of location.marks) {
+    if (offset > at) break;
+    current = mark;
+  }
+  return current;
 }
 
 function extractPlainText(buffer) {
@@ -117,26 +145,183 @@ function byNumber(pattern) {
   return (a, b) => Number(pattern.exec(a)[1]) - Number(pattern.exec(b)[1]);
 }
 
+// DOCX 쪽 번호: Word는 저장할 때 화면에서 쪽이 넘어간 자리에 <w:lastRenderedPageBreak/>를 남긴다.
+// 이 표시가 있으면 그것만 세고(직접 넣은 쪽 나눔도 여기에 포함된다), 없으면 직접 넣은 쪽 나눔만 센다.
+// 둘 다 없으면 쪽을 알 수 없으므로 문단 번호로 표시한다.
 function extractDocx(zip) {
   const xml = zip.read("word/document.xml") || "";
-  return chunkLines(paragraphs(xml, "w:p", "w:t"), (index) => ({ paragraph: index + 1 }));
+  const rendered = /<w:lastRenderedPageBreak\b/.test(xml);
+  const breakPattern = rendered
+    ? /<w:lastRenderedPageBreak\b/g
+    : /<w:br\b[^>]*\bw:type="page"|<w:pageBreakBefore\b(?![^>]*w:val="(?:0|false)")/g;
+  const hasPages = rendered || breakPattern.test(xml);
+  const list = [];
+  let page = 1;
+  for (const match of xml.matchAll(/<w:p[\s>][\s\S]*?<\/w:p>/g)) {
+    const paragraph = match[0];
+    const firstText = paragraph.search(/<w:t[\s>]/);
+    const head = firstText < 0 ? paragraph : paragraph.slice(0, firstText);
+    const before = (head.match(breakPattern) || []).length;
+    const total = (paragraph.match(breakPattern) || []).length;
+    page += before;
+    list.push({ text: textOf(paragraph, "w:t"), page });
+    page += total - before;
+  }
+  return chunkLines(list.map((item) => item.text), (index) => (
+    hasPages ? { page: list[index].page, paragraph: index + 1 } : { paragraph: index + 1 }
+  ));
+}
+
+// 슬라이드 번호는 파일 이름(slide41.xml)이 아니라 presentation.xml의 발표 순서를 따른다.
+// 슬라이드를 옮기거나 지우면 둘이 달라진다 (예: 파일은 slide41, 실제로는 40번째).
+function pptxSlideOrder(zip) {
+  const presentation = zip.read("ppt/presentation.xml") || "";
+  const rels = zip.read("ppt/_rels/presentation.xml.rels") || "";
+  const targets = new Map();
+  for (const match of rels.matchAll(/<Relationship\b[^>]*>/g)) {
+    const id = /\bId="([^"]+)"/.exec(match[0]);
+    const target = /\bTarget="([^"]+)"/.exec(match[0]);
+    if (id && target) targets.set(id[1], `ppt/${target[1].replace(/^\/?ppt\//, "").replace(/^\//, "")}`);
+  }
+  const ordered = [];
+  for (const match of presentation.matchAll(/<p:sldId\b[^>]*>/g)) {
+    const relId = /\br:id="([^"]+)"/.exec(match[0]);
+    const target = relId && targets.get(relId[1]);
+    if (target && zip.names.includes(target)) ordered.push(target);
+  }
+  if (ordered.length) return ordered;
+  const pattern = /^ppt\/slides\/slide(\d+)\.xml$/;
+  return zip.names.filter((name) => pattern.test(name)).sort(byNumber(pattern));
 }
 
 function extractPptx(zip) {
-  const pattern = /^ppt\/slides\/slide(\d+)\.xml$/;
-  return zip.names.filter((name) => pattern.test(name)).sort(byNumber(pattern)).flatMap((name) => {
-    const slide = Number(pattern.exec(name)[1]);
+  const first = Number(/\bfirstSlideNum="(\d+)"/.exec(zip.read("ppt/presentation.xml") || "")?.[1] ?? 1);
+  return pptxSlideOrder(zip).flatMap((name, index) => {
+    const slide = index + first;
     const text = paragraphs(zip.read(name), "a:p", "a:t").map((line) => line.trim()).filter(Boolean).join("\n");
     return text ? [{ location: { slide }, text }] : [];
   });
 }
 
+// 본문 줄 배치로 쪽을 센다 (HWP·HWPX 공통): "쪽의 첫 줄" 표시(bit 0)가 있거나,
+// 단 바뀜(bit 1)이 아닌데 줄의 세로 위치가 위로 돌아가면 새 쪽이다.
+function countPage(state, vpos, flags) {
+  state.sawLayout = true;
+  const newColumnOnly = (flags & 0x2) && !(flags & 0x1);
+  const movedUp = state.lastVpos !== null && vpos < state.lastVpos && !newColumnOnly;
+  if ((flags & 0x1) || movedUp || state.page === 0) state.page += 1;
+  state.lastVpos = vpos;
+}
+
+// HWPX 문단을 문서 순서대로 { text, page, inTable }로 돌려준다. 본문(최상위) 문단의 <hp:lineseg>로 쪽을 세고,
+// 표 안 문단은 표를 담은 본문 문단의 쪽(표가 시작하는 쪽)을 따른다.
+const HWPX_TOKEN = /<(\/?)hp:(p|t|lineseg|tbl|tc|cellAddr|cellSpan|cellSz|sz|pagePr|margin)\b([^>]*?)(\/?)>|<[^>]*>|([^<]+)/g;
+const attr = (attrs, name) => Number(new RegExp(`\\b${name}="(-?\\d+)"`).exec(attrs)?.[1] || 0);
+
+function hwpxParagraphs(xml, state) {
+  const out = [];
+  const stack = [];
+  let inText = 0;
+  let tableDepth = 0;
+  let table = null; // 본문 표 { height, rows: Map<행, 높이>, cells: [{ row, paragraphs }] }
+  let cell = null;
+  let pageHeight = 0;
+  for (const [, close, name, attrs, selfClosing, text] of xml.matchAll(HWPX_TOKEN)) {
+    if (text !== undefined) {
+      if (inText > 0 && stack.length) stack[stack.length - 1].text += decodeXml(text);
+    } else if (name === "p" && !selfClosing) {
+      if (!close) {
+        const paragraph = { text: "", page: null, vpos: null, inTable: tableDepth > 0, top: stack.length === 0 && tableDepth === 0, start: out.length, tables: [] };
+        out.push(paragraph);
+        stack.push(paragraph);
+        if (cell) cell.paragraphs.push(paragraph);
+        else if (table && tableDepth === 1) table.captions.push(paragraph); // 표 제목(캡션): 표가 시작하는 쪽
+      } else {
+        const paragraph = stack.pop();
+        if (paragraph?.top && paragraph.page !== null) {
+          for (let i = paragraph.start; i < out.length; i += 1) out[i].page ??= paragraph.page;
+          // 표 칸의 쪽: 표를 담은 문단의 줄 위치 + 칸 위 행들의 높이 (HWP와 같은 계산).
+          // 한 문단에 표가 여러 개면 앞 표 아래에 이어 놓인 것으로 보고 차례로 쌓는다.
+          if (paragraph.tables.length && state.bodyHeight) {
+            let top = Math.max(paragraph.vpos || 0, 0);
+            for (const table of paragraph.tables) {
+              const rowTop = new Map();
+              let y = 0;
+              for (let row = 0; row <= Math.max(-1, ...table.rows.keys()); row += 1) {
+                rowTop.set(row, y);
+                y += table.rows.get(row) || 0;
+              }
+              for (const caption of table.captions) {
+                caption.page = paragraph.page + Math.floor(top / state.bodyHeight);
+                caption.inTable = false;
+              }
+              for (const item of table.cells) {
+                for (const inner of item.paragraphs) {
+                  inner.page = paragraph.page + Math.floor((top + (rowTop.get(item.row) || 0)) / state.bodyHeight);
+                  inner.inTable = false;
+                }
+              }
+              top += table.height || y;
+            }
+            if (top > state.bodyHeight) {
+              state.page = Math.max(state.page, paragraph.page + Math.floor(top / state.bodyHeight));
+              state.lastVpos = top % state.bodyHeight;
+            }
+          }
+        }
+      }
+    } else if (name === "t" && !selfClosing) {
+      inText += close ? -1 : 1;
+    } else if (name === "tbl" && !selfClosing) {
+      if (!close && tableDepth === 0 && stack[stack.length - 1]?.top) {
+        table = { height: null, rows: new Map(), cells: [], captions: [] };
+        stack[stack.length - 1].tables.push(table);
+      }
+      tableDepth += close ? -1 : 1;
+      if (close && tableDepth === 0) table = null;
+    } else if (name === "sz" && table && tableDepth === 1 && !cell && table.height === null) {
+      table.height = attr(attrs, "height");
+    } else if (name === "tc" && table && tableDepth === 1 && !selfClosing) {
+      if (!close) cell = { row: 0, rowSpan: 1, paragraphs: [] };
+      else if (cell) {
+        table.cells.push(cell);
+        cell = null;
+      }
+    } else if (cell && tableDepth === 1 && name === "cellAddr") {
+      cell.row = attr(attrs, "rowAddr");
+    } else if (cell && tableDepth === 1 && name === "cellSpan") {
+      cell.rowSpan = attr(attrs, "rowSpan") || 1;
+    } else if (cell && tableDepth === 1 && name === "cellSz" && cell.rowSpan === 1) {
+      table.rows.set(cell.row, Math.max(table.rows.get(cell.row) || 0, attr(attrs, "height")));
+    } else if (name === "pagePr" && !close) {
+      pageHeight = attr(attrs, "height");
+    } else if (name === "margin" && pageHeight && !state.bodyHeight) {
+      state.bodyHeight = pageHeight - attr(attrs, "top") - attr(attrs, "bottom") - attr(attrs, "header") - attr(attrs, "footer");
+    } else if (name === "lineseg") {
+      const paragraph = stack[stack.length - 1];
+      if (paragraph?.top) {
+        countPage(state, attr(attrs, "vertpos"), attr(attrs, "flags"));
+        paragraph.page ??= Math.max(state.page, 1);
+        paragraph.vpos ??= attr(attrs, "vertpos");
+      }
+    }
+  }
+  return out.map(({ text, page, inTable }) => ({ text, page: state.sawLayout ? page ?? Math.max(state.page, 1) : null, inTable }));
+}
+
 function extractHwpx(zip) {
   const pattern = /^Contents\/section(\d+)\.xml$/;
+  const state = { page: 0, lastVpos: null, sawLayout: false };
   return zip.names.filter((name) => pattern.test(name)).sort(byNumber(pattern)).flatMap((name) => {
     const section = Number(pattern.exec(name)[1]) + 1;
-    return chunkLines(paragraphs(zip.read(name), "hp:p", "hp:t"), (index) => ({ section, paragraph: index + 1 }));
+    return chunkPages(hwpxParagraphs(zip.read(name), state), (page, paragraph, inTable) => hwpLocation(page, section, paragraph, inTable));
   });
+}
+
+// 쪽을 모르면(줄 배치 정보 없음) 구역·문단 번호로, 표 안이면 표가 시작하는 쪽으로 표시한다.
+function hwpLocation(page, section, paragraph, inTable) {
+  if (!page) return { section, paragraph: paragraph + 1 };
+  return inTable ? { tableFrom: page, section, paragraph: paragraph + 1 } : { page, section, paragraph: paragraph + 1 };
 }
 
 function extractXlsx(zip) {
@@ -172,7 +357,15 @@ function extractXlsx(zip) {
         if (value && value.trim()) cells.push({ cell: ref ? ref[1] : "", value: value.trim() });
       }
       if (cells.length) {
-        chunks.push({ location: { sheet, cell: cells[0].cell }, text: cells.map((item) => item.value).join(" | ") });
+        // 한 행을 한 조각으로 저장하되, 칸마다 시작 위치를 marks로 남겨 실제 일치한 칸(B4, C4 …)을 보여 준다.
+        const marks = [];
+        let offset = 0;
+        for (const item of cells) {
+          marks.push([offset, { sheet, cell: item.cell }]);
+          offset += item.value.length + 3; // " | "
+        }
+        const location = marks.length > 1 ? { sheet, cell: cells[0].cell, marks } : { sheet, cell: cells[0].cell };
+        chunks.push({ location, text: cells.map((item) => item.value).join(" | ") });
       }
     }
   }
@@ -203,21 +396,111 @@ function hwpParagraphText(data) {
   return text;
 }
 
-function hwpSectionParagraphs(buffer) {
+const HWPTAG_PARA_HEADER = 66;
+const HWPTAG_PARA_LINE_SEG = 69;
+const LINE_SEG_SIZE = 36;
+
+const HWPTAG_CTRL_HEADER = 71;
+const HWPTAG_LIST_HEADER = 72;
+const HWPTAG_PAGE_DEF = 73;
+const CTRL_TABLE = 0x74626c20; // 'tbl '
+
+// 본문 표의 칸이 몇 쪽에 오는지 계산한다: 표 위치(담은 문단의 줄 위치) + 그 칸 위 행들의 높이를 쪽 본문 높이로 나눈다.
+// 표가 여러 쪽에 걸치면 표 뒤 본문의 쪽도 그만큼 넘긴다. 쪽 본문 높이를 모르면 "표가 시작하는 쪽"으로만 남긴다.
+function finishHwpTable(table, state) {
+  if (!table || !state.bodyHeight || table.startPage === null) return;
+  const rowTop = new Map();
+  let top = 0;
+  for (let row = 0; row <= Math.max(-1, ...table.rows.keys()); row += 1) {
+    rowTop.set(row, top);
+    top += table.rows.get(row) || 0;
+  }
+  for (const paragraph of table.paragraphs) {
+    const y = table.top + (rowTop.get(paragraph.tableRow) || 0);
+    paragraph.page = table.startPage + Math.floor(y / state.bodyHeight);
+    paragraph.inTable = false; // 쪽을 계산했으므로 "표가 시작하는 쪽"이 아니라 그 쪽으로 표시한다
+  }
+  const end = table.top + table.height;
+  if (end > state.bodyHeight) {
+    state.page = Math.max(state.page, table.startPage + Math.floor(end / state.bodyHeight));
+    state.lastVpos = end % state.bodyHeight;
+  }
+}
+
+// 문단마다 { text, page, inTable }을 돌려준다. 쪽 번호는 한글이 마지막으로 저장한 본문 줄 배치(PARA_LINE_SEG)로 구한다:
+// "쪽의 첫 줄" 표시(flags bit 0)가 있거나, 단 바뀜(bit 1)이 아닌데 줄의 세로 위치가 위로 돌아가면 새 쪽이다.
+// 본문 표 안 글자는 용지(PAGE_DEF)·표 높이·칸 높이로 쪽을 계산한다 (finishHwpTable).
+// state는 구역(Section)을 넘어 이어진다.
+function hwpSectionParagraphs(buffer, state = { page: 0, lastVpos: null }) {
   const paragraphs = [];
+  let topLevel = null; // 현재 본문(최상위) 문단 { page, vpos, members: [] }
+  let table = null; // 현재 본문 표 { startPage, top, height, rows: Map<행, 높이>, paragraphs }
+  let tableRow = 0;
   for (let offset = 0; offset + 4 <= buffer.length;) {
     const header = buffer.readUInt32LE(offset);
     const tag = header & 0x3ff;
+    const level = (header >>> 10) & 0x3ff;
     let size = header >>> 20;
     offset += 4;
     if (size === 0xfff) {
       size = buffer.readUInt32LE(offset);
       offset += 4;
     }
-    if (tag === HWPTAG_PARA_TEXT) paragraphs.push(hwpParagraphText(buffer.subarray(offset, offset + size)));
+    const data = buffer.subarray(offset, offset + size);
+    if (tag === HWPTAG_PAGE_DEF && data.length >= 32) {
+      // 용지 높이 - 위·아래 여백 - 머리말·꼬리말 여백 = 본문 높이
+      const [height, top, bottom, headerMargin, footerMargin] = [4, 16, 20, 24, 28].map((at) => data.readUInt32LE(at));
+      state.bodyHeight = height - top - bottom - headerMargin - footerMargin;
+    } else if (tag === HWPTAG_PARA_HEADER && level === 0) {
+      finishHwpTable(table, state);
+      table = null;
+      topLevel = { page: null, vpos: null, members: [] };
+    } else if (tag === HWPTAG_PARA_TEXT) {
+      const paragraph = { text: hwpParagraphText(data), page: topLevel?.page ?? null, inTable: level > 1 };
+      paragraphs.push(paragraph);
+      if (topLevel && topLevel.page === null) topLevel.members.push(paragraph);
+      if (table && level > 1) {
+        paragraph.tableRow = tableRow;
+        table.paragraphs.push(paragraph);
+      }
+    } else if (tag === HWPTAG_PARA_LINE_SEG && level === 1 && topLevel) {
+      for (let i = 0; i + LINE_SEG_SIZE <= data.length; i += LINE_SEG_SIZE) {
+        countPage(state, data.readInt32LE(i + 4), data.readUInt32LE(i + 32));
+        if (i === 0 && topLevel.page === null) {
+          topLevel.page = Math.max(state.page, 1);
+          topLevel.vpos = data.readInt32LE(i + 4);
+          for (const member of topLevel.members) member.page = topLevel.page;
+        }
+      }
+    } else if (tag === HWPTAG_CTRL_HEADER && level === 1 && topLevel && data.length >= 24 && data.readUInt32LE(0) === CTRL_TABLE) {
+      finishHwpTable(table, state);
+      table = { startPage: topLevel.page, top: Math.max(topLevel.vpos || 0, 0), height: data.readUInt32LE(20), rows: new Map(), paragraphs: [] };
+    } else if (tag === HWPTAG_LIST_HEADER && level === 2 && table && data.length >= 24) {
+      // 표 칸: 행 번호(10), 행 병합 수(14), 칸 높이(20). 병합하지 않은 칸의 높이로 행 높이를 정한다.
+      tableRow = data.readUInt16LE(10);
+      if (data.readUInt16LE(14) === 1) table.rows.set(tableRow, Math.max(table.rows.get(tableRow) || 0, data.readUInt32LE(20)));
+    }
     offset += size;
   }
+  finishHwpTable(table, state);
+  // 줄 배치 정보가 없는 파일은 쪽을 추정하지 않는다 (문단 번호로 표시).
+  for (const paragraph of paragraphs) paragraph.page = state.sawLayout ? paragraph.page ?? Math.max(state.page, 1) : null;
   return paragraphs;
+}
+
+// 쪽이나 표 안/밖이 바뀌면 조각을 나눠, 조각의 위치 표시가 실제 일치한 줄과 어긋나지 않게 한다.
+function chunkPages(paragraphs, makeLocation) {
+  const chunks = [];
+  let start = 0;
+  const key = (paragraph) => `${paragraph.page}|${paragraph.inTable}`;
+  for (let i = 1; i <= paragraphs.length; i += 1) {
+    if (i === paragraphs.length || key(paragraphs[i]) !== key(paragraphs[start])) {
+      const { page, inTable } = paragraphs[start];
+      chunks.push(...chunkLines(paragraphs.slice(start, i).map((p) => p.text), (index) => makeLocation(page, start + index, inTable)));
+      start = i;
+    }
+  }
+  return chunks;
 }
 
 function extractHwp(buffer) {
@@ -233,12 +516,13 @@ function extractHwp(buffer) {
   const compressed = Boolean(flags & 0x1);
 
   const chunks = [];
+  const state = { page: 0, lastVpos: null, sawLayout: false };
   for (let index = 0; ; index += 1) {
     const entry = CFB.find(doc, `/BodyText/Section${index}`);
     if (!entry) break;
     const raw = Buffer.from(entry.content);
     const data = compressed ? zlib.inflateRawSync(raw) : raw;
-    chunks.push(...chunkLines(hwpSectionParagraphs(data), (paragraph) => ({ section: index + 1, paragraph: paragraph + 1 })));
+    chunks.push(...chunkPages(hwpSectionParagraphs(data, state), (page, paragraph, inTable) => hwpLocation(page, index + 1, paragraph, inTable)));
   }
   return chunks;
 }
@@ -282,6 +566,8 @@ async function extractPdf(buffer) {
 async function extractFile(filePath) {
   const extension = path.extname(filePath).slice(1).toLocaleLowerCase();
   if (!SUPPORTED_EXTENSIONS.has(extension)) return null;
+  // 이미지는 Python OCR 프로세스가 직접 읽는다. 큰 이미지 전체를 Node 메모리에 중복 적재하지 않는다.
+  if (IMAGE_EXTENSIONS.has(extension)) return extractImageText(filePath);
   const buffer = await fs.readFile(filePath);
   if (TEXT_EXTENSIONS.has(extension)) return extractPlainText(buffer);
   if (extension === "hwp") return extractHwp(buffer);
@@ -296,13 +582,15 @@ async function extractFile(filePath) {
 
 function describeLocation(location) {
   if (!location) return "";
+  if (location.ocr) return location.line ? `이미지 OCR ${location.line}번째 줄` : "이미지 OCR";
   if (location.sheet !== undefined) return `${location.sheet} 시트 ${location.cell || ""}`.trim();
+  if (location.tableFrom) return `${location.tableFrom}쪽에서 시작하는 표 안`;
   if (location.page) return `${location.page}쪽`;
-  if (location.slide) return `슬라이드 ${location.slide}`;
+  if (location.slide !== undefined) return `슬라이드 ${location.slide}`;
   if (location.section) return `${location.section}구역 ${location.paragraph}번째 문단`;
   if (location.paragraph) return `${location.paragraph}번째 문단`;
   if (location.line) return `${location.line}번째 줄`;
   return "";
 }
 
-module.exports = { MAX_FILE_SIZE, SUPPORTED_EXTENSIONS, decodeText, readZipEntries, extractFile, describeLocation };
+module.exports = { MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, decodeText, readZipEntries, extractFile, describeLocation, resolveLocation };

@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
 
 // 일부 Windows 환경에서 GPU 프로세스가 시작되지 않아 앱 전체가 종료되는 것을 막는다.
 app.disableHardwareAcceleration();
@@ -102,7 +102,9 @@ function createWindow() {
     minWidth: 820,
     minHeight: 560,
     title: "FindInside",
-    autoHideMenuBar: true,
+    // autoHideMenuBar를 켜면 Alt 키를 메뉴 막대가 가져간다. 한국어 키보드의 한/영 키는 오른쪽 Alt로 들어오는 경우가 많아
+    // 한/영 전환이 막힌다. 메뉴는 Menu.setApplicationMenu(null)로 없애므로 켜지 않는다.
+    autoHideMenuBar: false,
     backgroundColor: "#0b1020",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -121,7 +123,7 @@ app.whenReady().then(async () => {
   await loadState();
   prepareEntries(state.entries);
   await fs.mkdir(app.getPath("userData"), { recursive: true });
-  contentDb = openContentIndex(contentDbPath());
+  contentDb = openContentIndex(contentDbPath(), { migrate: false });
   Menu.setApplicationMenu(null);
   createWindow();
 
@@ -226,10 +228,17 @@ async function rebuildIndex() {
 
 ipcMain.handle("search:run", (_, query, filters) => {
   const contentMatches = contentDb ? searchContent(contentDb, tokenize(query)) : new Map();
-  return searchEntries(state.entries, query, filters || {}, 200, contentMatches);
+  const stats = {};
+  const items = searchEntries(state.entries, query, filters || {}, 200, contentMatches, stats);
+  return { items, total: stats.total || 0 };
 });
 ipcMain.handle("item:open", (_, targetPath) => shell.openPath(targetPath));
 ipcMain.handle("item:show", (_, targetPath) => shell.showItemInFolder(targetPath));
+// 문서 안 위치로 바로 갈 수 없으므로, 일치한 문구를 복사해 두고 문서를 연다 (문서에서 Ctrl+F → Ctrl+V).
+ipcMain.handle("item:openAt", (_, targetPath, phrase) => {
+  if (phrase) clipboard.writeText(String(phrase));
+  return shell.openPath(targetPath);
+});
 ipcMain.handle("menu:action", (_, action) => {
   const webContents = window?.webContents;
   if (!webContents) return;

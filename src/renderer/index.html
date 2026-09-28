@@ -39,8 +39,8 @@
         </label>
         <div class="filterBar">
           <button id="toggleFilters" type="button" class="filterToggle" aria-expanded="false" aria-controls="filterPanel">상세 조건 펼치기 ▾</button>
-          <div id="filterChips" class="chips"></div>
           <button id="clearFilters" type="button" class="linkButton" hidden>조건 초기화</button>
+          <div id="filterChips" class="chips" aria-label="적용 중인 조건"></div>
         </div>
       </header>
 
@@ -59,7 +59,7 @@
             <h3>확장자</h3>
             <div class="extensionControls">
               <select id="extensionSelect" class="extensionSelect" aria-label="파일 형식">
-                <option value="">전체 파일 형식</option>
+                <option value="">+ 형식 추가</option>
                 <option value="hwp">HWP</option>
                 <option value="hwpx">HWPX</option>
                 <option value="doc">DOC</option>
@@ -71,8 +71,18 @@
                 <option value="pdf">PDF</option>
                 <option value="txt">TXT</option>
                 <option value="csv">CSV</option>
+                <option value="png">PNG</option>
+                <option value="jpg">JPG</option>
+                <option value="jpeg">JPEG</option>
+                <option value="gif">GIF</option>
+                <option value="webp">WEBP</option>
+                <option value="bmp">BMP</option>
+                <option value="tif">TIF</option>
+                <option value="tiff">TIFF</option>
               </select>
-              <input id="extensionInput" class="extensionInput" type="text" placeholder="직접 입력 (예: hwp, xlsx)" autocomplete="off" />
+              <div id="extensionTags" class="tagInput" title="확장자를 여러 개 넣을 수 있습니다. 필요 없는 것은 ×로 지웁니다.">
+                <input id="extensionInput" class="tagInputField" type="text" placeholder="확장자 입력 후 Enter (예: hwp)" autocomplete="off" />
+              </div>
             </div>
           </div>
       </div>
@@ -97,6 +107,7 @@
       </article>
     </template>
 
+    <script src="highlight.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

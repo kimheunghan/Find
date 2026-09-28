@@ -1,15 +1,21 @@
 "use strict";
 
 const fs = require("node:fs/promises");
+const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
-const { MAX_FILE_SIZE, SUPPORTED_EXTENSIONS, extractFile, describeLocation } = require("./extract");
-const { TOKENIZER_VERSION, normalizeText, toTokens, needsScan, toMatchPhrase } = require("./tokens");
+const { MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, extractFile, describeLocation, resolveLocation } = require("./extract");
+const { TOKENIZER_VERSION, toTokens, toChars, singleChar, needsScan, toMatchPhrase } = require("./tokens");
+const { displayText, findRanges, termRegex, isStrictTerm } = require("./renderer/highlight");
 
+// 이미지 OCR은 한 장에 수 초가 걸린다. 아이콘 같은 작은 이미지와 시스템·앱·캐시 폴더의 이미지는 건너뛴다.
+const MIN_OCR_IMAGE_SIZE = 15 * 1024;
+const OCR_SKIP_PATH = /^[a-z]:\\(windows|program files|program files \(x86\)|programdata)\\|\\(appdata|node_modules|\.git|\.vscode|\.gradle|\.cache|\.m2|\.nuget|\.npm)\\/i;
 const HITS_PER_FILE = 3;
-const ROWS_PER_TERM = 5000;
 const SNIPPET_RADIUS = 40;
 
-function openContentIndex(dbPath) {
+// migrate: 토큰화 규칙이 바뀌었을 때 토큰을 다시 만들지 여부. 수 분이 걸릴 수 있어
+// 메인 프로세스(검색용)는 false로 열고, 색인 worker가 맡는다.
+function openContentIndex(dbPath, { migrate = true } = {}) {
   const db = new DatabaseSync(dbPath);
   db.exec(`
     PRAGMA busy_timeout = 5000;
@@ -32,19 +38,41 @@ function openContentIndex(dbPath) {
     );
     CREATE INDEX IF NOT EXISTS chunks_file ON chunks(file_id);
     CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(tokens, content='', contentless_delete=1);
+    CREATE VIRTUAL TABLE IF NOT EXISTS chunk_chars USING fts5(chars, content='', contentless_delete=1);
   `);
+  // 형식별 추출 방식 버전(extract.js EXTRACTOR_VERSIONS). 예전 DB에는 열이 없어 추가한다.
+  if (!db.prepare("PRAGMA table_info(files)").all().some((column) => column.name === "extractor")) {
+    try {
+      db.exec("ALTER TABLE files ADD COLUMN extractor INTEGER");
+    } catch {
+      // 다른 연결(메인·worker)이 먼저 추가했으면 그대로 쓴다.
+    }
+  }
 
   // 토큰화 방식이 바뀌면 이전 색인과 섞이지 않도록 전체를 다시 만든다 (ADR-0002).
   const version = db.prepare("SELECT value FROM meta WHERE key = 'tokenizer'").get();
-  if (!version || Number(version.value) !== TOKENIZER_VERSION) {
-    db.exec("DELETE FROM chunk_fts; DELETE FROM chunks; DELETE FROM files;");
-    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('tokenizer', ?)").run(String(TOKENIZER_VERSION));
-  }
+  if (migrate && (!version || Number(version.value) !== TOKENIZER_VERSION)) retokenize(db);
   return db;
+}
+
+// 토큰화 규칙이 바뀌면 저장된 본문(chunks.text)으로 토큰만 다시 만든다. 파일을 다시 추출하지 않아 빠르다.
+function retokenize(db) {
+  transaction(db, () => {
+    db.exec("INSERT INTO chunk_fts (chunk_fts) VALUES ('delete-all')");
+    db.exec("INSERT INTO chunk_chars (chunk_chars) VALUES ('delete-all')");
+    const insert = db.prepare("INSERT INTO chunk_fts (rowid, tokens) VALUES (?, ?)");
+    const insertChars = db.prepare("INSERT INTO chunk_chars (rowid, chars) VALUES (?, ?)");
+    for (const row of db.prepare("SELECT id, text FROM chunks").iterate()) {
+      insert.run(row.id, toTokens(row.text).join(" "));
+      insertChars.run(row.id, toChars(row.text).join(" "));
+    }
+    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('tokenizer', ?)").run(String(TOKENIZER_VERSION));
+  });
 }
 
 function removeChunks(db, fileId) {
   db.prepare("DELETE FROM chunk_fts WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)").run(fileId);
+  db.prepare("DELETE FROM chunk_chars WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)").run(fileId);
   db.prepare("DELETE FROM chunks WHERE file_id = ?").run(fileId);
 }
 
@@ -59,24 +87,31 @@ function transaction(db, work) {
   }
 }
 
+function extractorVersion(filePath) {
+  return EXTRACTOR_VERSIONS[path.extname(filePath).slice(1).toLowerCase()] || 1;
+}
+
 function saveFile(db, filePath, stat, status, chunks, error) {
   transaction(db, () => {
     const existing = db.prepare("SELECT id FROM files WHERE path = ?").get(filePath);
+    const extractor = extractorVersion(filePath);
     let fileId;
     if (existing) {
       fileId = existing.id;
       removeChunks(db, fileId);
-      db.prepare("UPDATE files SET size = ?, modified_at = ?, status = ?, error = ? WHERE id = ?")
-        .run(stat.size, Math.trunc(stat.mtimeMs), status, error || null, fileId);
+      db.prepare("UPDATE files SET size = ?, modified_at = ?, status = ?, error = ?, extractor = ? WHERE id = ?")
+        .run(stat.size, Math.trunc(stat.mtimeMs), status, error || null, extractor, fileId);
     } else {
-      fileId = db.prepare("INSERT INTO files (path, size, modified_at, status, error) VALUES (?, ?, ?, ?, ?)")
-        .run(filePath, stat.size, Math.trunc(stat.mtimeMs), status, error || null).lastInsertRowid;
+      fileId = db.prepare("INSERT INTO files (path, size, modified_at, status, error, extractor) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(filePath, stat.size, Math.trunc(stat.mtimeMs), status, error || null, extractor).lastInsertRowid;
     }
     const insertChunk = db.prepare("INSERT INTO chunks (file_id, location, text) VALUES (?, ?, ?)");
     const insertTokens = db.prepare("INSERT INTO chunk_fts (rowid, tokens) VALUES (?, ?)");
+    const insertChars = db.prepare("INSERT INTO chunk_chars (rowid, chars) VALUES (?, ?)");
     for (const chunk of chunks) {
       const chunkId = insertChunk.run(fileId, JSON.stringify(chunk.location || null), chunk.text).lastInsertRowid;
       insertTokens.run(chunkId, toTokens(chunk.text).join(" "));
+      insertChars.run(chunkId, toChars(chunk.text).join(" "));
     }
   });
 }
@@ -84,7 +119,12 @@ function saveFile(db, filePath, stat, status, chunks, error) {
 // 이름 색인 결과(entries) 중 지원 형식 파일의 내용을 추출한다. 크기·수정 시각이 같으면 건너뛴다.
 async function indexContent(db, entries, options = {}) {
   const onProgress = options.onProgress || (() => {});
-  const targets = entries.filter((entry) => entry.kind === "file" && SUPPORTED_EXTENSIONS.has(entry.extension));
+  const supported = entries.filter((entry) => entry.kind === "file" && SUPPORTED_EXTENSIONS.has(entry.extension));
+  // 문서를 먼저 색인하고, 오래 걸리는 이미지 OCR은 맨 뒤로 보낸다.
+  const targets = [
+    ...supported.filter((entry) => !IMAGE_EXTENSIONS.has(entry.extension)),
+    ...supported.filter((entry) => IMAGE_EXTENSIONS.has(entry.extension))
+  ];
   const known = new Map(db.prepare("SELECT id, path, size, modified_at, status FROM files").all().map((row) => [row.path, row]));
   const summary = { total: targets.length, extracted: 0, skipped: 0, errors: 0 };
 
@@ -96,11 +136,20 @@ async function indexContent(db, entries, options = {}) {
     } catch {
       continue;
     }
-    const previous = db.prepare("SELECT size, modified_at, status FROM files WHERE path = ?").get(entry.path);
-    if (previous && previous.size === stat.size && previous.modified_at === Math.trunc(stat.mtimeMs) && previous.status !== "error") {
+    const previous = db.prepare("SELECT size, modified_at, status, extractor FROM files WHERE path = ?").get(entry.path);
+    const unchanged = previous && previous.size === stat.size && previous.modified_at === Math.trunc(stat.mtimeMs);
+    // 추출 방식이 바뀐 형식은 파일이 그대로여도 다시 추출한다 (예전 행은 extractor가 비어 있어 1로 본다).
+    const sameExtractor = previous && (previous.extractor || 1) >= extractorVersion(entry.path);
+    if (unchanged && sameExtractor && previous.status !== "error") {
+      summary.skipped += 1;
+    } else if (stat.size === 0) {
+      saveFile(db, entry.path, stat, "empty", []);
       summary.skipped += 1;
     } else if (stat.size > MAX_FILE_SIZE) {
       saveFile(db, entry.path, stat, "too_large", []);
+      summary.skipped += 1;
+    } else if (IMAGE_EXTENSIONS.has(entry.extension) && (stat.size < MIN_OCR_IMAGE_SIZE || OCR_SKIP_PATH.test(entry.path))) {
+      saveFile(db, entry.path, stat, "ocr_skipped", []);
       summary.skipped += 1;
     } else {
       try {
@@ -126,38 +175,71 @@ async function indexContent(db, entries, options = {}) {
   return summary;
 }
 
-function makeSnippet(text, term) {
-  const lower = normalizeText(text);
-  const at = lower.indexOf(term);
-  if (at < 0) {
-    const head = text.slice(0, SNIPPET_RADIUS * 2);
-    return { before: head, match: "", after: text.length > head.length ? "…" : "" };
+// 미리보기는 정규화한 글자(displayText)에서 잘라 낸다. 원문과 정규화 결과의 글자 수가 달라
+// 강조 위치가 밀리는 문제(예: "사양" 검색에 "양과"가 강조됨)를 막는다.
+function makeSnippet(rawText, term) {
+  const text = displayText(rawText);
+  const [range] = findRanges(text, [term]);
+  if (!range) {
+    const head = text.slice(0, SNIPPET_RADIUS * 2).replace(/\s+/g, " ");
+    return { before: head, match: "", after: text.length > SNIPPET_RADIUS * 2 ? "…" : "" };
   }
+  const [at, until] = range;
   const start = Math.max(0, at - SNIPPET_RADIUS);
-  const end = Math.min(text.length, at + term.length + SNIPPET_RADIUS);
+  const end = Math.min(text.length, until + SNIPPET_RADIUS);
   return {
+    at,
     before: `${start > 0 ? "…" : ""}${text.slice(start, at)}`.replace(/\s+/g, " "),
-    match: text.slice(at, at + term.length),
-    after: `${text.slice(at + term.length, end)}${end < text.length ? "…" : ""}`.replace(/\s+/g, " ")
+    match: text.slice(at, until).replace(/\s+/g, " "),
+    after: `${text.slice(until, end)}${end < text.length ? "…" : ""}`.replace(/\s+/g, " ")
   };
 }
 
+// 검색어와 일치하는 모든 파일을 찾고, 파일마다 미리보기용 조각을 최대 HITS_PER_FILE개 돌려준다.
+// 조각 수로 자르면(예: 5,000개) 조각이 많은 파일이 목록을 채워 다른 파일이 빠지므로, 먼저 id만 모두 모은다.
 function rowsForTerm(db, term) {
-  if (needsScan(term)) {
+  let candidates;
+  const char = singleChar(term);
+  if (char) {
+    candidates = db.prepare(`
+      SELECT chunks.id, chunks.file_id FROM chunk_chars JOIN chunks ON chunks.id = chunk_chars.rowid
+      WHERE chunk_chars MATCH ? ORDER BY chunks.file_id, chunks.id
+    `).all(`"${char}"`);
+  } else if (needsScan(term)) {
+    // 한 글자가 섞인 드문 검색어("설 치" 등)만 본문을 훑는다. 시간이 오래 걸리지 않도록 조각 수를 제한한다.
     const escaped = term.replace(/[\\%_]/g, (char) => `\\${char}`);
-    return db.prepare(`
-      SELECT chunks.id, chunks.location, chunks.text, files.path
-      FROM chunks JOIN files ON files.id = chunks.file_id
-      WHERE lower(chunks.text) LIKE ? ESCAPE '\\' LIMIT ?
-    `).all(`%${escaped}%`, ROWS_PER_TERM);
+    candidates = db.prepare("SELECT id, file_id FROM chunks WHERE lower(text) LIKE ? ESCAPE '\\' ORDER BY file_id, id LIMIT 20000")
+      .all(`%${escaped}%`);
+  } else {
+    const phrase = toMatchPhrase(term);
+    if (!phrase) return [];
+    candidates = db.prepare(`
+      SELECT chunks.id, chunks.file_id FROM chunk_fts JOIN chunks ON chunks.id = chunk_fts.rowid
+      WHERE chunk_fts MATCH ? ORDER BY chunks.file_id, chunks.id
+    `).all(phrase);
   }
-  const phrase = toMatchPhrase(term);
-  if (!phrase) return [];
-  return db.prepare(`
+
+  // IP·번호처럼 문장부호가 든 검색어는 글자 그대로 들어 있는 조각만 인정한다 ("10.0.3.21" ≠ "10,0,3,21").
+  const strict = isStrictTerm(term) ? termRegex(term) : null;
+  const readChunk = db.prepare(`
     SELECT chunks.id, chunks.location, chunks.text, files.path
-    FROM chunk_fts JOIN chunks ON chunks.id = chunk_fts.rowid JOIN files ON files.id = chunks.file_id
-    WHERE chunk_fts MATCH ? ORDER BY rank LIMIT ?
-  `).all(phrase, ROWS_PER_TERM);
+    FROM chunks JOIN files ON files.id = chunks.file_id WHERE chunks.id = ?
+  `);
+  const rows = [];
+  let fileId = null;
+  let taken = 0;
+  for (const candidate of candidates) {
+    if (candidate.file_id !== fileId) {
+      fileId = candidate.file_id;
+      taken = 0;
+    }
+    if (taken >= HITS_PER_FILE) continue;
+    const row = readChunk.get(candidate.id);
+    if (strict && !new RegExp(strict.source, "iu").test(displayText(row.text))) continue;
+    rows.push(row);
+    taken += 1;
+  }
+  return rows;
 }
 
 // 검색어별로 내용이 일치한 파일을 찾는다. 반환값: Map<경로, { terms: Set<검색어>, hits: [{ location, snippet }] }>
@@ -173,7 +255,8 @@ function searchContent(db, terms) {
       match.terms.add(term);
       if (match.hits.length < HITS_PER_FILE && !match.chunkIds.has(row.id)) {
         match.chunkIds.add(row.id);
-        match.hits.push({ location: describeLocation(JSON.parse(row.location)), snippet: makeSnippet(row.text, term) });
+        const snippet = makeSnippet(row.text, term);
+        match.hits.push({ location: describeLocation(resolveLocation(JSON.parse(row.location), snippet.at)), snippet });
       }
     }
   }
