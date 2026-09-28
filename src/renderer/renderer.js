@@ -637,7 +637,7 @@ async function loadMailFolders() {
 function mailSummary(item) {
   const date = item.date ? item.date.slice(0, 10) : "";
   const account = mailAccounts.find((account) => account.id === item.account);
-  return [item.sender, date, [account?.name || account?.email, item.folder].filter(Boolean).join(" · ")].filter(Boolean).join("  |  ");
+  return [item.sender, date, [account?.name || account?.email, folderLabel(item.folder || "")].filter(Boolean).join(" · ")].filter(Boolean).join("  |  ");
 }
 
 async function openMailItem(item) {
