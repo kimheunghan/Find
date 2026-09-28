@@ -898,7 +898,8 @@ function loadFilterPanelOpen() {
 }
 
 function setFilterPanelOpen(open) {
-  filterPanelEl.hidden = !open;
+  // 메일 탭에는 PC용 조건(검색 범위·확장자)이 필요 없다. 시작 처리가 늦게 끝나 다시 여는 경우도 막는다.
+  filterPanelEl.hidden = !open || source === "mail";
   filterToggleEl.setAttribute("aria-expanded", String(open));
   filterToggleEl.textContent = open ? "상세 조건 접기 ▴" : "상세 조건 펼치기 ▾";
   try {
