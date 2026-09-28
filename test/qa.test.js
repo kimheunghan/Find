@@ -12,6 +12,7 @@ const { makeDocx, makePptx, makeXlsx, makeHwpx, makeHwp, makePdf } = require("./
 const { openContentIndex, indexContent, searchContent } = require("../src/contentIndex");
 const { searchEntries, tokenize } = require("../src/search");
 const { displayText, findRanges, termRegex, queryTerms } = require("../src/renderer/highlight");
+const { hangulReadings } = require("../src/hanja");
 
 let entries;
 let db;
@@ -58,7 +59,9 @@ function find(query, filters = {}) {
       assert.ok(hit.snippet.match, `${query}: ${item.name} ${hit.location} 본문 강조 없음`);
       const matchesTerm = terms.some((term) => {
         const pattern = termRegex(term);
-        return pattern && new RegExp(`^(?:${pattern.source})$`, "iu").test(hit.snippet.match);
+        // 한자 강조는 한글 음으로 맞춰 본다 (全京愛 ↔ 전경애)
+        const exact = new RegExp(`^(?:${pattern?.source})$`, "iu");
+        return pattern && [hit.snippet.match, ...hangulReadings(hit.snippet.match)].some((value) => exact.test(value));
       });
       assert.ok(matchesTerm, `${query}: ${item.name} 강조 "${hit.snippet.match}"가 검색어와 다름`);
     }
@@ -268,4 +271,18 @@ test("검색하는 사이 조각이 지워져도(재추출 중) 오류 없이 �
   localDb.prepare = (sql) => (/WHERE chunks\.id = \?/.test(sql) ? { get: () => undefined } : original(sql));
   assert.doesNotThrow(() => searchContent(localDb, ["최삼순"]));
   assert.equal(searchContent(localDb, ["최삼순"]).size, 0);
+});
+
+test("한자 이름을 한글 음으로 찾는다 (OCR이 한글을 틀려도 옆의 한자로): 전경애 → 全京愛, 김종환 → 金鍾煥", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "findinside-qa-hanja-"));
+  const file = path.join(dir, "족보.txt");
+  await fs.writeFile(file, "全京愛\n30세대 • 진경에\n金鍾煥\n30세대 • 김결환");
+  const local = [{ name: "족보.txt", path: file, kind: "file", extension: "txt" }];
+  const localDb = openContentIndex(":memory:");
+  await indexContent(localDb, local);
+  for (const [query, hanja] of [["전경애", "全京愛"], ["김종환", "金鍾煥"], ["금종환", "金鍾煥"]]) {
+    const results = searchEntries(local, query, {}, 200, searchContent(localDb, tokenize(query)));
+    assert.equal(results.length, 1, query);
+    assert.equal(results[0].hits[0].snippet.match, hanja, `${query} 강조는 한자에`);
+  }
 });

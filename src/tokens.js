@@ -4,7 +4,9 @@
 // 영문과 숫자는 서로 나눈다. OCR이 "WEB01IP10.0.3.21"처럼 붙여 읽어도 "10.0.3.21", "web01"로 찾을 수 있다.
 // 버전 2: 영문·숫자 분리, 영문 뒤에 붙은 한글("web서버")을 한글 묶음으로 분리
 // 버전 3: 한 글자 검색용 글자 색인(chunk_chars) 추가
-const TOKENIZER_VERSION = 3;
+// 버전 4: 한자를 한글 음으로도 색인 (全京愛 → 전경애, 金 → 금·김)
+const TOKENIZER_VERSION = 4;
+const { hangulReadings } = require("./hanja");
 const CJK = "\\p{Script=Hangul}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}";
 const RUN_PATTERN = new RegExp(`[${CJK}]+|(?:(?![${CJK}])\\p{L})+|\\p{N}+`, "gu");
 const CJK_PATTERN = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
@@ -24,13 +26,17 @@ function runTokens(run) {
   return tokens;
 }
 
+// 한자가 있으면 한글 음으로 바꾼 글자열의 토큰도 뒤에 덧붙인다 (원문 토큰 사이 순서는 그대로라 구문 검색이 깨지지 않는다).
 function toTokens(text) {
-  return textRuns(text).flatMap(runTokens);
+  const tokens = textRuns(text).flatMap(runTokens);
+  for (const reading of hangulReadings(text)) tokens.push(...textRuns(reading).flatMap(runTokens));
+  return tokens;
 }
 
 // 한 글자 검색("치")용: 조각에 들어 있는 한글·한자·가나 글자를 중복 없이 모은다.
 function toChars(text) {
-  return [...new Set(textRuns(text).filter((run) => CJK_PATTERN.test(run)).flatMap((run) => [...run]))];
+  const runs = [text, ...hangulReadings(text)].flatMap((value) => textRuns(value));
+  return [...new Set(runs.filter((run) => CJK_PATTERN.test(run)).flatMap((run) => [...run]))];
 }
 
 // 검색어가 한글·한자·가나 한 글자뿐인지 (글자 색인으로 찾는다).

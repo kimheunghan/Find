@@ -37,13 +37,27 @@
   }
 
   // text 안에서 검색어들이 일치하는 구간 [시작, 끝]을 겹치지 않게, 긴 일치를 우선해 돌려준다.
+  // Node(색인·본문 미리보기)에서는 한자를 한글 음으로도 맞춰 본다 (全京愛 ↔ 전경애). 음으로 바꾼 글자열은
+  // 원문과 길이가 같아 찾은 위치를 그대로 한자 강조에 쓴다. 화면(브라우저)에서는 제목·경로만 강조하므로 쓰지 않는다.
+  let hangulReadings = () => [];
+  if (typeof module === "object" && module.exports && typeof require === "function") {
+    try {
+      hangulReadings = require("../hanja").hangulReadings;
+    } catch {
+      // 한자음 데이터가 없으면 원문만 맞춰 본다
+    }
+  }
+
   function findRanges(text, terms) {
     const ranges = [];
+    const variants = [text, ...hangulReadings(text)];
     for (const term of terms) {
       const pattern = termRegex(term);
       if (!pattern) continue;
-      for (const match of text.matchAll(pattern)) {
-        if (match[0].length) ranges.push([match.index, match.index + match[0].length]);
+      for (const variant of variants) {
+        for (const match of variant.matchAll(pattern)) {
+          if (match[0].length) ranges.push([match.index, match.index + match[0].length]);
+        }
       }
     }
     ranges.sort((a, b) => a[0] - b[0] || (b[1] - b[0]) - (a[1] - a[0]));
