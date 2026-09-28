@@ -22,7 +22,7 @@ h2 { font-size: 13px; color: #aeb8ce; margin: 0 0 12px; }
 .primary, .secondary { width: 100%; border: 0; border-radius: 8px; padding: 11px 12px; cursor: pointer; }
 .primary { margin-top: 8px; color: white; background: #5b7cfa; font-weight: 650; }
 .secondary { color: #cdd6ea; background: #1a2235; }
-.status { margin-top: 18px; font-size: 12px; line-height: 1.6; color: #8490aa; }
+.status { margin-top: 18px; font-size: 12px; line-height: 1.6; color: #8490aa; white-space: pre-line; }
 main { grid-row: 2; padding: 30px 44px; min-width: 0; }
 header { max-width: 900px; margin: 0 auto; }
 .searchBox { display: flex; align-items: center; gap: 12px; padding: 15px 18px; border: 1px solid #313d58; border-radius: 14px; background: rgba(19, 27, 44, .94); box-shadow: 0 20px 50px rgba(0,0,0,.22); }
@@ -44,3 +44,31 @@ header { max-width: 900px; margin: 0 auto; }
 .show { align-self: center; margin-right: 12px; border: 0; color: #91a7ff; background: transparent; cursor: pointer; font-size: 12px; }
 .empty { padding: 70px 20px; text-align: center; color: #78849d; border: 1px dashed #2a344c; border-radius: 12px; }
 @media (max-width: 850px) { body { grid-template-columns: 220px 1fr; } main { padding: 24px; } }
+.filterBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.filterToggle { border: 1px solid #313d58; border-radius: 8px; padding: 7px 12px; color: #cdd6ea; background: #151c2d; cursor: pointer; font-size: 13px; }
+.filterToggle[aria-expanded="true"], .filterToggle.active { border-color: #5b7cfa; color: #f4f6ff; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 320px; padding: 5px 6px 5px 10px; border-radius: 999px; background: #22305a; color: #dbe3ff; font-size: 12px; }
+.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip button { border: 0; padding: 0 4px; color: #9fb1ff; background: transparent; cursor: pointer; font-size: 13px; }
+.chip button:hover { color: #fff; }
+.linkButton { border: 0; padding: 4px; color: #91a7ff; background: transparent; cursor: pointer; font-size: 12px; }
+.filterPanel { display: grid; gap: 14px; margin-top: 10px; padding: 16px 18px; border: 1px solid #2a3552; border-radius: 12px; background: rgba(17, 24, 40, .96); }
+.filterRow { display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: start; }
+.filterRow h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: #aeb8ce; }
+.optionButtons { display: flex; flex-wrap: wrap; gap: 6px; }
+.optionButtons label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 7px; background: #1a2235; color: #cdd6ea; font-size: 13px; cursor: pointer; }
+.optionButton { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #2c3854; border-radius: 7px; padding: 5px 10px; color: #cdd6ea; background: #1a2235; cursor: pointer; font-size: 13px; }
+.optionButton[aria-pressed="true"] { border-color: #5b7cfa; color: #fff; background: #2a3a70; }
+#addScope { margin-top: 6px; }
+.filterHelp { margin: 8px 0 0; color: #78849d; font-size: 12px; }
+.extensionInput { width: 260px; margin-top: 8px; padding: 6px 10px; border: 1px solid #2c3854; border-radius: 7px; outline: 0; color: #f4f6ff; background: #121a2b; font-size: 13px; }
+.extensionInput:focus { border-color: #5b7cfa; }
+#hint.warn { color: #f0b86e; }
+@media (max-width: 850px) { .filterRow { grid-template-columns: 1fr; gap: 6px; } }
+.hits { grid-column: 1 / -1; margin: -4px 0 0; padding: 0 16px 12px 63px; list-style: none; display: grid; gap: 4px; }
+.hits[hidden], .filterPanel[hidden] { display: none; }
+.hits li { display: flex; gap: 8px; min-width: 0; color: #aab4ca; font-size: 12.5px; line-height: 1.5; }
+.hits li > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hits .where { flex: none; padding: 0 6px; border-radius: 4px; background: #1f2a44; color: #9fb1ff; font-size: 11.5px; }
+.hits mark { padding: 0 1px; border-radius: 3px; background: #5b7cfa; color: #fff; }

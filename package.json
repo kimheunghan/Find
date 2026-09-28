@@ -7,9 +7,13 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js"
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js && node --check src/tokens.js && node --check src/extract.js && node --check src/contentIndex.js && node --check src/contentWorker.js && node --check src/renderer/renderer.js"
   },
   "devDependencies": {
     "electron": "^38.1.2"
+  },
+  "dependencies": {
+    "cfb": "^1.2.2",
+    "pdfjs-dist": "^6.3.289"
   }
 }

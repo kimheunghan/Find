@@ -4,9 +4,13 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron")
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { indexRoots } = require("./indexer");
-const { searchEntries } = require("./search");
+const { searchEntries, tokenize, prepareEntries } = require("./search");
+const { Worker } = require("node:worker_threads");
+const { openContentIndex, searchContent, contentStats } = require("./contentIndex");
+const { SUPPORTED_EXTENSIONS } = require("./extract");
 
 let window;
+let contentDb;
 let state = { roots: [], excludedPaths: [], entries: [], errors: [], indexedAt: null };
 
 function createApplicationMenu() {
@@ -103,10 +107,16 @@ function createWindow() {
   });
   window.setMenuBarVisibility(false);
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
+  window.webContents.once("did-finish-load", () => {
+    if (state.entries.length) runIndexing(refreshContent).catch(() => {});
+  });
 }
 
 app.whenReady().then(async () => {
   await loadState();
+  prepareEntries(state.entries);
+  await fs.mkdir(app.getPath("userData"), { recursive: true });
+  contentDb = openContentIndex(contentDbPath());
   Menu.setApplicationMenu(null);
   createWindow();
 
@@ -129,7 +139,9 @@ ipcMain.handle("state:get", () => ({
   excludedPaths: state.excludedPaths,
   indexedAt: state.indexedAt,
   entryCount: state.entries.length,
-  errorCount: state.errors.length
+  errorCount: state.errors.length,
+  indexing: Boolean(indexing),
+  content: contentDb ? contentStats(contentDb) : {}
 }));
 
 ipcMain.handle("roots:set", async (_, roots) => {
@@ -144,17 +156,73 @@ ipcMain.handle("excludes:set", async (_, excludedPaths) => {
   return state.excludedPaths;
 });
 
-ipcMain.handle("index:rebuild", async () => {
+let indexing = null;
+
+// 색인 작업은 한 번에 하나만 돈다. 이미 돌고 있으면 그 작업이 끝나기를 기다린다.
+function runIndexing(job) {
+  indexing ||= job()
+    .then((summary) => {
+      window?.webContents.send("index:done", summary);
+      return summary;
+    })
+    .finally(() => { indexing = null; });
+  return indexing;
+}
+
+function indexSummary(content) {
+  return { entryCount: state.entries.length, errorCount: state.errors.length, indexedAt: state.indexedAt, content };
+}
+
+function contentDbPath() {
+  return path.join(app.getPath("userData"), "findinside-content.db");
+}
+
+// 내용 추출은 worker 스레드에서 돌려 창 입력이 멈추지 않게 한다.
+// 전체 목록(수백만 개)을 넘기면 복사 비용이 커서, 내용 색인 대상 파일만 골라 넘긴다.
+function indexContentInWorker(entries) {
+  const targets = entries
+    .filter((entry) => entry.kind === "file" && SUPPORTED_EXTENSIONS.has(entry.extension))
+    .map(({ name, path: filePath, kind, extension }) => ({ name, path: filePath, kind, extension }));
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath() } });
+    worker.on("message", (message) => {
+      if (message.type === "progress") {
+        window?.webContents.send("index:progress", { phase: "content", ...message.progress });
+      } else if (message.type === "done") {
+        resolve(message.summary);
+        worker.terminate();
+      } else if (message.type === "error") {
+        reject(new Error(message.message));
+        worker.terminate();
+      }
+    });
+    worker.on("error", reject);
+    worker.postMessage({ type: "index", entries: targets });
+  });
+}
+
+ipcMain.handle("index:rebuild", () => runIndexing(rebuildIndex));
+
+// 앱을 켤 때: 파일 목록은 저장된 것을 쓰고, 내용 색인만 이어서 만든다. 바뀌지 않은 파일은 건너뛴다.
+async function refreshContent() {
+  return indexSummary(await indexContentInWorker(state.entries));
+}
+
+async function rebuildIndex() {
   const result = await indexRoots(state.roots, {
     excludedPaths: state.excludedPaths,
     onProgress: (progress) => window?.webContents.send("index:progress", progress)
   });
   state = { ...state, ...result };
+  prepareEntries(state.entries);
   await saveState();
-  return { entryCount: state.entries.length, errorCount: state.errors.length, indexedAt: state.indexedAt };
-});
+  return indexSummary(await indexContentInWorker(state.entries));
+}
 
-ipcMain.handle("search:run", (_, query) => searchEntries(state.entries, query));
+ipcMain.handle("search:run", (_, query, filters) => {
+  const contentMatches = contentDb ? searchContent(contentDb, tokenize(query)) : new Map();
+  return searchEntries(state.entries, query, filters || {}, 200, contentMatches);
+});
 ipcMain.handle("item:open", (_, targetPath) => shell.openPath(targetPath));
 ipcMain.handle("item:show", (_, targetPath) => shell.showItemInFolder(targetPath));
 ipcMain.handle("menu:action", (_, action) => {

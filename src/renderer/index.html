@@ -35,8 +35,38 @@
       <header>
         <label class="searchBox">
           <span>⌕</span>
-          <input id="query" type="search" placeholder="파일명, 폴더명 또는 경로 검색" autocomplete="off" />
+          <input id="query" type="search" placeholder="파일명, 경로 또는 파일 내용 검색" autocomplete="off" />
         </label>
+        <div class="filterBar">
+          <button id="toggleFilters" type="button" class="filterToggle" aria-expanded="false" aria-controls="filterPanel">상세 조건 펼치기 ▾</button>
+          <div id="filterChips" class="chips"></div>
+          <button id="clearFilters" type="button" class="linkButton" hidden>조건 초기화</button>
+        </div>
+        <div id="filterPanel" class="filterPanel" hidden>
+          <div class="filterRow">
+            <h3>검색 범위</h3>
+            <div>
+              <div id="scopeOptions" class="optionButtons"></div>
+              <button id="addScope" type="button" class="optionButton">폴더 선택…</button>
+              <p class="filterHelp">선택한 드라이브나 폴더 안의 항목만 검색합니다. 여러 개를 고르면 그중 한 곳에만 있어도 결과에 나옵니다.</p>
+            </div>
+          </div>
+          <div class="filterRow">
+            <h3>종류</h3>
+            <div class="optionButtons" role="radiogroup" aria-label="종류">
+              <label><input type="radio" name="kind" value="all" checked /> 전체</label>
+              <label><input type="radio" name="kind" value="file" /> 파일만</label>
+              <label><input type="radio" name="kind" value="folder" /> 폴더만</label>
+            </div>
+          </div>
+          <div class="filterRow">
+            <h3>확장자</h3>
+            <div>
+              <div id="extensionOptions" class="optionButtons"></div>
+              <input id="extensionInput" class="extensionInput" type="text" placeholder="직접 입력 (예: hwp, xlsx)" autocomplete="off" />
+            </div>
+          </div>
+        </div>
       </header>
 
       <section class="summary">
@@ -55,6 +85,7 @@
           <span class="type"></span>
         </button>
         <button class="show" title="폴더에서 보기">위치 열기</button>
+        <ul class="hits"></ul>
       </article>
     </template>
 

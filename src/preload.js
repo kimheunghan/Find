@@ -8,9 +8,10 @@ contextBridge.exposeInMainWorld("findInside", {
   setRoots: (roots) => ipcRenderer.invoke("roots:set", roots),
   setExcludedPaths: (excludedPaths) => ipcRenderer.invoke("excludes:set", excludedPaths),
   rebuildIndex: () => ipcRenderer.invoke("index:rebuild"),
-  search: (query) => ipcRenderer.invoke("search:run", query),
+  search: (query, filters) => ipcRenderer.invoke("search:run", query, filters),
   openItem: (targetPath) => ipcRenderer.invoke("item:open", targetPath),
   showInFolder: (targetPath) => ipcRenderer.invoke("item:show", targetPath),
   runMenuAction: (action) => ipcRenderer.invoke("menu:action", action),
-  onIndexProgress: (callback) => ipcRenderer.on("index:progress", (_, value) => callback(value))
+  onIndexProgress: (callback) => ipcRenderer.on("index:progress", (_, value) => callback(value)),
+  onIndexDone: (callback) => ipcRenderer.on("index:done", (_, value) => callback(value))
 });

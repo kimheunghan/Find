@@ -8,9 +8,19 @@ const resultsEl = document.querySelector("#results");
 const countEl = document.querySelector("#resultCount");
 const hintEl = document.querySelector("#hint");
 const template = document.querySelector("#resultTemplate");
+const filterPanelEl = document.querySelector("#filterPanel");
+const filterToggleEl = document.querySelector("#toggleFilters");
+const filterChipsEl = document.querySelector("#filterChips");
+const clearFiltersEl = document.querySelector("#clearFilters");
+const scopeOptionsEl = document.querySelector("#scopeOptions");
+const extensionOptionsEl = document.querySelector("#extensionOptions");
+const extensionInputEl = document.querySelector("#extensionInput");
+const COMMON_EXTENSIONS = ["hwp", "hwpx", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf", "txt", "csv"];
+const KIND_LABELS = { file: "파일만", folder: "폴더만" };
 let roots = [];
 let excludedPaths = [];
 let timer;
+let filters = { scopes: [], kind: "all", extensions: [] };
 
 const menuItems = {
   file: [{ label: "색인 시작", action: "reindex" }, { label: "종료", action: "quit" }],
@@ -74,6 +84,7 @@ function renderFolderList(container, folders, onRemove) {
 }
 
 function renderRoots() {
+  renderFilters();
   renderFolderList(rootsEl, roots, async (folder) => {
     roots = await window.findInside.setRoots(roots.filter((item) => item !== folder));
     renderRoots();
@@ -89,13 +100,32 @@ function renderExcludes() {
   });
 }
 
+function renderHits(list, hits) {
+  list.hidden = !hits.length;
+  for (const hit of hits) {
+    const line = document.createElement("li");
+    if (hit.location) {
+      const where = document.createElement("span");
+      where.className = "where";
+      where.textContent = hit.location;
+      line.append(where);
+    }
+    const text = document.createElement("span");
+    const mark = document.createElement("mark");
+    mark.textContent = hit.snippet.match;
+    text.append(hit.snippet.before, mark, hit.snippet.after);
+    line.append(text);
+    list.append(line);
+  }
+}
+
 function renderResults(items) {
   resultsEl.replaceChildren();
   countEl.textContent = items.length;
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = queryEl.value ? "일치하는 파일이나 폴더가 없습니다." : "검색어를 입력하세요.";
+    empty.textContent = queryEl.value ? "일치하는 파일, 폴더 또는 내용이 없습니다." : "검색어를 입력하세요.";
     resultsEl.append(empty);
     return;
   }
@@ -105,7 +135,11 @@ function renderResults(items) {
     row.querySelector(".icon").textContent = item.kind === "folder" ? "▰" : "▤";
     row.querySelector(".name").textContent = item.name;
     row.querySelector(".path").textContent = item.path;
-    row.querySelector(".type").textContent = item.kind === "folder" ? "폴더" : item.extension || "파일";
+    row.querySelector(".type").textContent = [
+      item.matchedIn?.includes("content") ? "내용 일치" : "",
+      item.kind === "folder" ? "폴더" : item.extension || "파일"
+    ].filter(Boolean).join(" · ");
+    renderHits(row.querySelector(".hits"), item.hits || []);
     row.querySelector(".open").addEventListener("click", () => window.findInside.openItem(item.path));
     row.querySelector(".show").addEventListener("click", () => window.findInside.showInFolder(item.path));
     resultsEl.append(row);
@@ -132,23 +166,231 @@ document.querySelector("#addExclude").addEventListener("click", async () => {
 document.querySelector("#reindex").addEventListener("click", async () => {
   if (!roots.length) return;
   statusEl.textContent = "파일과 폴더를 색인하고 있습니다…";
-  const result = await window.findInside.rebuildIndex();
-  statusEl.textContent = `${result.entryCount.toLocaleString()}개 항목 색인 완료 · 오류 ${result.errorCount}개`;
+  showIndexDone(await window.findInside.rebuildIndex());
   queryEl.focus();
 });
 
-queryEl.addEventListener("input", () => {
-  clearTimeout(timer);
-  timer = setTimeout(async () => {
-    const query = queryEl.value.trim();
-    hintEl.textContent = query ? `“${query}” 파일명·폴더명·경로 검색` : "검색어를 입력하세요.";
-    renderResults(query ? await window.findInside.search(query) : []);
-  }, 90);
+function samePath(a, b) {
+  return pathKey(a) === pathKey(b);
+}
+
+function pathKey(value) {
+  return String(value).replace(/\//g, "\\").replace(/\\+$/, "").toLocaleLowerCase();
+}
+
+function isUnder(target, parent) {
+  const t = pathKey(target);
+  const p = pathKey(parent);
+  return t === p || t.startsWith(`${p}\\`);
+}
+
+function driveOf(folder) {
+  const match = /^([a-z]):/i.exec(folder);
+  return match ? `${match[1].toUpperCase()}:\\` : null;
+}
+
+function scopeCandidates() {
+  const candidates = [];
+  const add = (value) => {
+    if (value && !candidates.some((item) => samePath(item, value))) candidates.push(value);
+  };
+  roots.map(driveOf).sort().forEach(add);
+  roots.forEach(add);
+  filters.scopes.forEach(add);
+  return candidates;
+}
+
+function isIndexedScope(scope) {
+  return roots.some((root) => isUnder(scope, root) || isUnder(root, scope));
+}
+
+function hasFilters() {
+  return filters.scopes.length > 0 || filters.kind !== "all" || filters.extensions.length > 0;
+}
+
+function toggleScope(scope) {
+  filters.scopes = filters.scopes.some((item) => samePath(item, scope))
+    ? filters.scopes.filter((item) => !samePath(item, scope))
+    : [...filters.scopes, scope];
+  onFiltersChanged();
+}
+
+function setExtensions(extensions) {
+  filters.extensions = [...new Set(extensions
+    .map((item) => item.trim().toLocaleLowerCase().replace(/^\*?\./, ""))
+    .filter(Boolean))];
+}
+
+function toggleExtension(extension) {
+  setExtensions(filters.extensions.includes(extension)
+    ? filters.extensions.filter((item) => item !== extension)
+    : [...filters.extensions, extension]);
+  onFiltersChanged();
+}
+
+function optionButton(label, pressed, onClick, title) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "optionButton";
+  button.textContent = label;
+  button.title = title || label;
+  button.setAttribute("aria-pressed", String(pressed));
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function chip(label, onRemove) {
+  const item = document.createElement("span");
+  item.className = "chip";
+  item.title = label;
+  const text = document.createElement("span");
+  text.textContent = label;
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.title = "조건 빼기";
+  remove.textContent = "×";
+  remove.addEventListener("click", onRemove);
+  item.append(text, remove);
+  return item;
+}
+
+function renderFilters() {
+  scopeOptionsEl.replaceChildren(...scopeCandidates().map((scope) => optionButton(
+    scope,
+    filters.scopes.some((item) => samePath(item, scope)),
+    () => toggleScope(scope)
+  )));
+
+  const extensionChoices = [...new Set([...COMMON_EXTENSIONS, ...filters.extensions])];
+  extensionOptionsEl.replaceChildren(...extensionChoices.map((extension) => optionButton(
+    extension.toUpperCase(),
+    filters.extensions.includes(extension),
+    () => toggleExtension(extension)
+  )));
+  if (document.activeElement !== extensionInputEl) extensionInputEl.value = filters.extensions.join(", ");
+  document.querySelectorAll('input[name="kind"]').forEach((input) => { input.checked = input.value === filters.kind; });
+
+  const chips = filters.scopes.map((scope) => chip(`범위: ${scope}`, () => toggleScope(scope)));
+  if (filters.kind !== "all") {
+    chips.push(chip(KIND_LABELS[filters.kind], () => { filters.kind = "all"; onFiltersChanged(); }));
+  }
+  for (const extension of filters.extensions) {
+    chips.push(chip(extension.toUpperCase(), () => toggleExtension(extension)));
+  }
+  filterChipsEl.replaceChildren(...chips);
+  clearFiltersEl.hidden = !hasFilters();
+  filterToggleEl.classList.toggle("active", hasFilters());
+}
+
+function describeSearch(query) {
+  const parts = [];
+  parts.push(filters.scopes.length ? filters.scopes.join(", ") : "전체 검색 위치");
+  if (filters.kind !== "all") parts.push(KIND_LABELS[filters.kind]);
+  if (filters.extensions.length) parts.push(filters.extensions.map((item) => item.toUpperCase()).join("·"));
+  return `“${query}” · ${parts.join(" · ")}`;
+}
+
+async function runSearch() {
+  const query = queryEl.value.trim();
+  const unindexed = filters.scopes.filter((scope) => !isIndexedScope(scope));
+  hintEl.classList.toggle("warn", unindexed.length > 0);
+  if (unindexed.length) {
+    hintEl.textContent = `색인되지 않은 범위: ${unindexed.join(", ")} — 왼쪽 검색 위치에 추가하고 색인하세요.`;
+  } else {
+    hintEl.textContent = query
+      ? `${describeSearch(query)}${contentIndexing ? " · 내용 색인 진행 중" : ""}`
+      : "검색어를 입력하세요.";
+  }
+  renderResults(query ? await window.findInside.search(query, filters) : []);
+}
+
+function onFiltersChanged() {
+  renderFilters();
+  runSearch();
+}
+
+function loadFilterPanelOpen() {
+  try {
+    return localStorage.getItem("filterPanelOpen") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setFilterPanelOpen(open) {
+  filterPanelEl.hidden = !open;
+  filterToggleEl.setAttribute("aria-expanded", String(open));
+  filterToggleEl.textContent = open ? "상세 조건 접기 ▴" : "상세 조건 펼치기 ▾";
+  try {
+    localStorage.setItem("filterPanelOpen", open ? "1" : "0");
+  } catch {
+    // 저장하지 못해도 접기·펼치기는 동작한다.
+  }
+}
+
+filterToggleEl.addEventListener("click", () => setFilterPanelOpen(filterPanelEl.hidden));
+
+clearFiltersEl.addEventListener("click", () => {
+  filters = { scopes: [], kind: "all", extensions: [] };
+  onFiltersChanged();
 });
 
-window.findInside.onIndexProgress(({ scanned }) => {
-  statusEl.textContent = `${scanned.toLocaleString()}개 항목 확인 중…`;
+document.querySelector("#addScope").addEventListener("click", async () => {
+  const selected = await window.findInside.chooseFolder();
+  if (!selected || filters.scopes.some((item) => samePath(item, selected))) return;
+  filters.scopes = [...filters.scopes, selected];
+  onFiltersChanged();
 });
+
+document.querySelectorAll('input[name="kind"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    filters.kind = input.value;
+    onFiltersChanged();
+  });
+});
+
+extensionInputEl.addEventListener("change", () => {
+  setExtensions(extensionInputEl.value.split(/[\s,;]+/));
+  onFiltersChanged();
+});
+
+// 한글 조합 중(ㅅ→서→설)에는 자모마다 검색하지 않고, 입력이 잠시 멈췄을 때 한 번만 검색한다.
+function scheduleSearch() {
+  clearTimeout(timer);
+  timer = setTimeout(runSearch, 250);
+}
+
+queryEl.addEventListener("input", (event) => {
+  if (event.isComposing) return;
+  scheduleSearch();
+});
+queryEl.addEventListener("compositionend", scheduleSearch);
+
+let contentIndexing = false;
+let lastProgressSearch = 0;
+
+function showIndexDone(result) {
+  contentIndexing = false;
+  statusEl.textContent = `${result.entryCount.toLocaleString()}개 항목 색인 완료 · 내용 추출 ${result.content.extracted.toLocaleString()}개(변경 없음 ${result.content.skipped.toLocaleString()}개) · 오류 ${(result.errorCount + result.content.errors).toLocaleString()}개`;
+  if (queryEl.value.trim()) runSearch();
+}
+
+window.findInside.onIndexProgress((progress) => {
+  if (progress.phase !== "content") {
+    statusEl.textContent = `${progress.scanned.toLocaleString()}개 항목 확인 중…`;
+    return;
+  }
+  contentIndexing = true;
+  statusEl.textContent = `파일 내용 색인 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}
+끝난 파일부터 검색 결과에 반영됩니다.`;
+  // 색인 중에도 검색어가 있으면 몇 초마다 결과를 새로 고쳐 새로 색인된 내용을 보여 준다.
+  if (queryEl.value.trim() && Date.now() - lastProgressSearch > 5000) {
+    lastProgressSearch = Date.now();
+    runSearch();
+  }
+});
+
+window.findInside.onIndexDone(showIndexDone);
 
 (async () => {
   const state = await window.findInside.getState();
@@ -157,7 +399,13 @@ window.findInside.onIndexProgress(({ scanned }) => {
   renderRoots();
   renderExcludes();
   if (state.entryCount) {
-    statusEl.textContent = `${state.entryCount.toLocaleString()}개 항목 색인됨`;
+    const contentCount = Number(state.content?.done || 0);
+    statusEl.textContent = state.indexing
+      ? "파일 내용 색인을 준비하고 있습니다…"
+      : contentCount
+        ? `${state.entryCount.toLocaleString()}개 항목 · 본문 ${contentCount.toLocaleString()}개 색인됨`
+        : `${state.entryCount.toLocaleString()}개 항목 색인됨 · 본문 색인을 시작합니다…`;
   }
+  setFilterPanelOpen(loadFilterPanelOpen());
   renderResults([]);
 })();
