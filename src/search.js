@@ -142,4 +142,27 @@ function searchEntries(entries, query, filters = {}, limit = 200, contentMatches
     }));
 }
 
-module.exports = { normalize, tokenize, scoreEntry, isInScope, matchesFilters, prepareEntries: normalizedKeys, searchEntries };
+// 새로 생기거나 바뀐 항목(added)과 지워진 경로(removed)를 목록에 반영한다. 배열과 정규화 캐시를 제자리에서 고쳐
+// 157만 개 전체를 다시 정규화(수 초)하지 않는다.
+function updateEntries(entries, added = [], removed = []) {
+  const keys = normalizedKeys(entries);
+  const drop = new Set(removed);
+  for (const entry of added) drop.add(entry.path);
+  if (drop.size) {
+    let write = 0;
+    for (let read = 0; read < entries.length; read += 1) {
+      if (drop.has(entries[read].path)) continue;
+      entries[write] = entries[read];
+      keys[write] = keys[read];
+      write += 1;
+    }
+    entries.length = write;
+    keys.length = write;
+  }
+  for (const entry of added) {
+    entries.push(entry);
+    keys.push({ name: normalize(entry.name), path: comparablePath(entry.path) });
+  }
+}
+
+module.exports = { normalize, tokenize, scoreEntry, isInScope, matchesFilters, prepareEntries: normalizedKeys, updateEntries, searchEntries };

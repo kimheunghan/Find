@@ -14,5 +14,6 @@ contextBridge.exposeInMainWorld("findInside", {
   openAt: (targetPath, phrase) => ipcRenderer.invoke("item:openAt", targetPath, phrase),
   runMenuAction: (action) => ipcRenderer.invoke("menu:action", action),
   onIndexProgress: (callback) => ipcRenderer.on("index:progress", (_, value) => callback(value)),
-  onIndexDone: (callback) => ipcRenderer.on("index:done", (_, value) => callback(value))
+  onIndexDone: (callback) => ipcRenderer.on("index:done", (_, value) => callback(value)),
+  onIndexChanged: (callback) => ipcRenderer.on("index:changed", (_, value) => callback(value))
 });

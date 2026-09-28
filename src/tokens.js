@@ -62,4 +62,4 @@ function toMatchPhrase(term) {
   return phrases.map((phrase) => `"${phrase}"${prefix}`).join(" OR ");
 }
 
-module.exports = { TOKENIZER_VERSION, normalizeText, toTokens, toChars, singleChar, needsScan, toMatchPhrase };
+module.exports = { TOKENIZER_VERSION, normalizeText, textRuns, toTokens, toChars, singleChar, needsScan, toMatchPhrase };

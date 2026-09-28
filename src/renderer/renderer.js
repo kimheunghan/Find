@@ -503,6 +503,10 @@ window.findInside.onIndexProgress((progress) => {
 });
 
 window.findInside.onIndexDone(showIndexDone);
+// 폴더 감시로 새 파일·바뀐 파일의 내용 색인이 끝나면 지금 검색어로 결과를 새로 고친다.
+window.findInside.onIndexChanged(() => {
+  if (queryEl.value.trim()) runSearch();
+});
 
 (async () => {
   const state = await window.findInside.getState();

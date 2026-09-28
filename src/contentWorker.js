@@ -9,9 +9,9 @@ const { IMAGE_EXTENSIONS } = require("./extract");
 const { stopOcr } = require("./ocr");
 
 // group: "documents"(문서) 또는 "images"(이미지 OCR). 토큰 재생성은 문서 worker만 한다.
-const db = openContentIndex(workerData.dbPath, { migrate: workerData.group !== "images" });
+const db = openContentIndex(workerData.dbPath, { migrate: workerData.group === "documents" });
 const isImage = (filePath) => IMAGE_EXTENSIONS.has(path.extname(filePath).slice(1).toLowerCase());
-const owns = workerData.group === "images" ? isImage : (filePath) => !isImage(filePath);
+const owns = workerData.group === "delta" ? () => false : workerData.group === "images" ? isImage : (filePath) => !isImage(filePath);
 
 parentPort.on("message", async (message) => {
   if (message.type !== "index") return;

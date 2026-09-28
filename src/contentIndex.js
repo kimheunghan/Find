@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 const { MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EXTRACTOR_VERSIONS, extractFile, describeLocation, resolveLocation } = require("./extract");
-const { TOKENIZER_VERSION, toTokens, toChars, singleChar, needsScan, toMatchPhrase } = require("./tokens");
+const { TOKENIZER_VERSION, toTokens, toChars, textRuns, singleChar, needsScan, toMatchPhrase } = require("./tokens");
 const { displayText, findRanges, termRegex, isStrictTerm } = require("./renderer/highlight");
 
 // 이미지 OCR은 한 장에 수 초가 걸린다. 아이콘 같은 작은 이미지와 시스템·앱·캐시 폴더의 이미지는 건너뛴다.
@@ -18,7 +18,7 @@ const SNIPPET_RADIUS = 40;
 function openContentIndex(dbPath, { migrate = true } = {}) {
   const db = new DatabaseSync(dbPath);
   db.exec(`
-    PRAGMA busy_timeout = 5000;
+    PRAGMA busy_timeout = 30000;
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -76,8 +76,10 @@ function removeChunks(db, fileId) {
   db.prepare("DELETE FROM chunks WHERE file_id = ?").run(fileId);
 }
 
+// 문서 worker와 OCR worker가 같은 DB에 동시에 쓴다. 그냥 BEGIN은 읽다가 쓰기로 바뀌는 순간 다른 쪽이 먼저 썼으면
+// 기다리지 않고 바로 "database is locked"로 실패한다. IMMEDIATE로 시작부터 쓰기 잠금을 잡아 busy_timeout만큼 기다린다.
 function transaction(db, work) {
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     work();
     db.exec("COMMIT");
@@ -116,6 +118,22 @@ function saveFile(db, filePath, stat, status, chunks, error) {
   });
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// DB가 잠겨 저장하지 못하면 잠시 뒤 다시 시도한다. 끝내 실패하면 그 파일만 건너뛴다 (다음 색인 때 다시 시도).
+async function safeSave(db, ...args) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      saveFile(db, ...args);
+      return true;
+    } catch (error) {
+      if (!/locked|busy/i.test(error.message)) throw error;
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+  return false;
+}
+
 // 이름 색인 결과(entries) 중 지원 형식 파일의 내용을 추출한다. 크기·수정 시각이 같으면 건너뛴다.
 async function indexContent(db, entries, options = {}) {
   const onProgress = options.onProgress || (() => {});
@@ -147,22 +165,27 @@ async function indexContent(db, entries, options = {}) {
     if (unchanged && sameExtractor && previous.status !== "error") {
       summary.skipped += 1;
     } else if (stat.size === 0) {
-      saveFile(db, entry.path, stat, "empty", []);
+      await safeSave(db, entry.path, stat, "empty", []);
       summary.skipped += 1;
     } else if (stat.size > MAX_FILE_SIZE) {
-      saveFile(db, entry.path, stat, "too_large", []);
+      await safeSave(db, entry.path, stat, "too_large", []);
       summary.skipped += 1;
     } else if (IMAGE_EXTENSIONS.has(entry.extension) && (stat.size < MIN_OCR_IMAGE_SIZE || OCR_SKIP_PATH.test(entry.path))) {
-      saveFile(db, entry.path, stat, "ocr_skipped", []);
+      await safeSave(db, entry.path, stat, "ocr_skipped", []);
       summary.skipped += 1;
     } else {
+      let chunks = null;
+      let failure = null;
       try {
-        saveFile(db, entry.path, stat, "done", await extractFile(entry.path) || []);
-        summary.extracted += 1;
+        chunks = await extractFile(entry.path) || [];
       } catch (error) {
-        saveFile(db, entry.path, stat, "error", [], error.message);
-        summary.errors += 1;
+        failure = error;
       }
+      const saved = failure
+        ? await safeSave(db, entry.path, stat, "error", [], failure.message)
+        : await safeSave(db, entry.path, stat, "done", chunks);
+      if (failure || !saved) summary.errors += 1;
+      else summary.extracted += 1;
     }
     if ((index + 1) % 20 === 0 || index + 1 === targets.length) {
       onProgress({ done: index + 1, total: targets.length, current: entry.path });
@@ -210,10 +233,27 @@ function rowsForTerm(db, term) {
       WHERE chunk_chars MATCH ? ORDER BY chunks.file_id, chunks.id
     `).all(`"${char}"`);
   } else if (needsScan(term)) {
-    // 한 글자가 섞인 드문 검색어("설 치" 등)만 본문을 훑는다. 시간이 오래 걸리지 않도록 조각 수를 제한한다.
-    const escaped = term.replace(/[\\%_]/g, (char) => `\\${char}`);
-    candidates = db.prepare("SELECT id, file_id FROM chunks WHERE lower(text) LIKE ? ESCAPE '\\' ORDER BY file_id, id LIMIT 20000")
-      .all(`%${escaped}%`);
+    // "21세", "3층", "설 치"처럼 한 글자 묶음이 섞인 검색어: 2.5GB 본문을 훑으면 수십 초가 걸리므로
+    // 묶음마다 색인(한 글자는 글자 색인, 나머지는 토큰 색인)으로 찾아 교집합을 낸 뒤, 붙어 있는지는 아래에서 본문으로 확인한다.
+    const parts = [];
+    const params = [];
+    for (const run of textRuns(term)) {
+      const one = singleChar(run);
+      if (one) {
+        parts.push("SELECT rowid FROM chunk_chars WHERE chunk_chars MATCH ?");
+        params.push(`"${one}"`);
+      } else {
+        const phrase = toMatchPhrase(run);
+        if (!phrase) continue;
+        parts.push("SELECT rowid FROM chunk_fts WHERE chunk_fts MATCH ?");
+        params.push(phrase);
+      }
+    }
+    if (!parts.length) return [];
+    candidates = db.prepare(`
+      SELECT chunks.id, chunks.file_id FROM chunks WHERE chunks.id IN (${parts.join(" INTERSECT ")})
+      ORDER BY chunks.file_id, chunks.id
+    `).all(...params);
   } else {
     const phrase = toMatchPhrase(term);
     if (!phrase) return [];
@@ -224,7 +264,8 @@ function rowsForTerm(db, term) {
   }
 
   // IP·번호처럼 문장부호가 든 검색어는 글자 그대로 들어 있는 조각만 인정한다 ("10.0.3.21" ≠ "10,0,3,21").
-  const strict = isStrictTerm(term) ? termRegex(term) : null;
+  // 교집합으로 찾은 검색어(needsScan)도 실제로 붙어 있는지 본문으로 확인한다.
+  const strict = isStrictTerm(term) || needsScan(term) ? termRegex(term) : null;
   const readChunk = db.prepare(`
     SELECT chunks.id, chunks.location, chunks.text, files.path
     FROM chunks JOIN files ON files.id = chunks.file_id WHERE chunks.id = ?

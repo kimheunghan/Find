@@ -203,3 +203,56 @@ test("결과 누락: 일치하는 조각이 아주 많은 파일이 있어도 �
     assert.deepEqual(results.map((item) => item.name).sort(), ["big.txt", "small.txt"], query);
   }
 });
+
+test("한 글자가 섞인 검색어(21세, 3층)는 색인 교집합으로 빠르게 찾고, 붙어 있을 때만 결과로 낸다", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "findinside-qa-mixed-"));
+  const files = { "a.txt": "아들 홍묵 21세 기록", "b.txt": "21 명이 세 번 모였다", "c.txt": "본관 3층 회의실" };
+  const local = [];
+  for (const [name, text] of Object.entries(files)) {
+    await fs.writeFile(path.join(dir, name), text);
+    local.push({ name, path: path.join(dir, name), kind: "file", extension: "txt" });
+  }
+  const localDb = openContentIndex(":memory:");
+  await indexContent(localDb, local);
+  const find21 = searchEntries(local, "21세", {}, 200, searchContent(localDb, tokenize("21세")));
+  assert.deepEqual(find21.map((item) => item.name), ["a.txt"], "21과 세가 떨어져 있는 b.txt는 제외");
+  assert.equal(find21[0].hits[0].snippet.match, "21세");
+  assert.deepEqual(searchEntries(local, "3층", {}, 200, searchContent(localDb, tokenize("3층"))).map((item) => item.name), ["c.txt"]);
+});
+
+test("폴더 감시 변경분: 새 파일은 목록에 더하고 지운 파일은 빼며, 바로 검색된다", () => {
+  const { updateEntries } = require("../src/search");
+  const list = [
+    { name: "old.txt", path: "C:\\x\\old.txt", kind: "file", extension: "txt" },
+    { name: "keep.txt", path: "C:\\x\\keep.txt", kind: "file", extension: "txt" }
+  ];
+  searchEntries(list, "keep"); // 정규화 캐시를 먼저 만든다
+  updateEntries(list, [{ name: "최삼순.png", path: "C:\\x\\최삼순.png", kind: "file", extension: "png" }], ["C:\\x\\old.txt"]);
+  assert.deepEqual(list.map((item) => item.name), ["keep.txt", "최삼순.png"]);
+  assert.deepEqual(searchEntries(list, "최삼순").map((item) => item.name), ["최삼순.png"]);
+  assert.deepEqual(searchEntries(list, "old"), []);
+});
+
+test("두 worker가 같은 DB에 동시에 써도 잠김 오류로 멈추지 않는다", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "findinside-qa-lock-"));
+  const dbPath = path.join(dir, "content.db");
+  const first = openContentIndex(dbPath);
+  const second = openContentIndex(dbPath, { migrate: false });
+  const makeFiles = async (prefix) => {
+    const list = [];
+    for (let i = 0; i < 30; i += 1) {
+      const file = path.join(dir, `${prefix}${i}.txt`);
+      await fs.writeFile(file, `${prefix} 문서 ${i}`);
+      list.push({ name: `${prefix}${i}.txt`, path: file, kind: "file", extension: "txt" });
+    }
+    return list;
+  };
+  const [a, b] = await Promise.all([makeFiles("가"), makeFiles("나")]);
+  const owns = (prefix) => (filePath) => path.basename(filePath).startsWith(prefix);
+  const [ra, rb] = await Promise.all([
+    indexContent(first, a, { owns: owns("가") }),
+    indexContent(second, b, { owns: owns("나") })
+  ]);
+  assert.equal(ra.extracted + rb.extracted, 60);
+  assert.equal(first.prepare("SELECT COUNT(*) AS n FROM files").get().n, 60, "서로의 기록을 지우지 않는다");
+});

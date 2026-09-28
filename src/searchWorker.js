@@ -5,7 +5,7 @@
 // 파일 목록(수백 MB)도 이 worker만 들고 있어 메인 프로세스는 가볍게 뜬다.
 const fs = require("node:fs");
 const { parentPort, workerData } = require("node:worker_threads");
-const { searchEntries, tokenize, prepareEntries } = require("./search");
+const { searchEntries, tokenize, prepareEntries, updateEntries } = require("./search");
 const { openContentIndex, searchContent } = require("./contentIndex");
 const { SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS } = require("./extract");
 
@@ -29,6 +29,13 @@ function load() {
   }
   entries = state.entries || [];
   prepareEntries(entries);
+  // 마지막 전체 색인 뒤에 폴더 감시로 반영한 변경분
+  try {
+    const delta = JSON.parse(fs.readFileSync(workerData.deltaPath, "utf8"));
+    updateEntries(entries, delta.added || [], delta.removed || []);
+  } catch {
+    // 변경분 파일이 없으면 그대로
+  }
   return {
     entryCount: entries.length,
     errorCount: (state.errors || []).length,
@@ -43,6 +50,9 @@ parentPort.on("message", ({ id, type, query, filters }) => {
   try {
     if (type === "load") {
       parentPort.postMessage({ id, result: load() });
+    } else if (type === "update") {
+      updateEntries(entries, query.added, query.removed);
+      parentPort.postMessage({ id, result: { entryCount: entries.length } });
     } else if (type === "search") {
       const stats = {};
       const items = searchEntries(entries, query, filters || {}, 200, searchContent(db, tokenize(query)), stats);

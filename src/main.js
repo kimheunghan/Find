@@ -8,7 +8,8 @@ app.commandLine.appendSwitch("disable-gpu");
 app.commandLine.appendSwitch("disable-gpu-compositing");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { indexRoots } = require("./indexer");
+const fsSync = require("node:fs");
+const { indexRoots, isExcluded } = require("./indexer");
 const { Worker } = require("node:worker_threads");
 const { openContentIndex, contentStats } = require("./contentIndex");
 const { SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS } = require("./extract");
@@ -84,6 +85,10 @@ function indexFile() {
   return path.join(app.getPath("userData"), "findinside-index.json");
 }
 
+function deltaFile() {
+  return path.join(app.getPath("userData"), "findinside-delta.json");
+}
+
 function settingsFile() {
   return path.join(app.getPath("userData"), "findinside-settings.json");
 }
@@ -109,7 +114,7 @@ let nextRequest = 1;
 const pendingRequests = new Map();
 
 function startSearchWorker() {
-  searchWorker = new Worker(path.join(__dirname, "searchWorker.js"), { workerData: { dbPath: contentDbPath(), indexPath: indexFile() } });
+  searchWorker = new Worker(path.join(__dirname, "searchWorker.js"), { workerData: { dbPath: contentDbPath(), indexPath: indexFile(), deltaPath: deltaFile() } });
   searchWorker.on("message", ({ id, result, error }) => {
     const request = pendingRequests.get(id);
     if (!request) return;
@@ -171,6 +176,8 @@ app.whenReady().then(async () => {
       settings = { roots: loaded.roots, excludedPaths: loaded.excludedPaths };
       await saveSettings();
     }
+    loadDelta();
+    watchRoots();
     return loaded;
   });
   Menu.setApplicationMenu(null);
@@ -204,6 +211,7 @@ ipcMain.handle("state:get", async () => {
 ipcMain.handle("roots:set", async (_, roots) => {
   settings.roots = [...new Set(roots.map((item) => path.resolve(item)))];
   await saveSettings();
+  watchRoots();
   return settings.roots;
 });
 
@@ -285,6 +293,93 @@ function indexContentInWorker({ documents: targets, images }) {
 ipcMain.handle("index:rebuild", () => runIndexing(rebuildIndex));
 
 // 앱을 켤 때: 파일 목록은 저장된 것을 쓰고, 내용 색인만 이어서 만든다. 바뀌지 않은 파일은 건너뛴다.
+// ---- 폴더 감시: 새로 생기거나 바뀌거나 지워진 파일을 몇 초 안에 목록·내용 색인에 반영한다 (전체 재색인 없이) ----
+let watchers = [];
+const changedPaths = new Set();
+let flushTimer = null;
+let delta = { added: new Map(), removed: new Set() }; // 마지막 전체 색인 뒤의 변경분 (앱을 다시 켜도 유지)
+let deltaQueue = [];
+let deltaWorker = null;
+
+function loadDelta() {
+  try {
+    const saved = JSON.parse(fsSync.readFileSync(deltaFile(), "utf8"));
+    delta = { added: new Map((saved.added || []).map((entry) => [entry.path, entry])), removed: new Set(saved.removed || []) };
+  } catch {
+    delta = { added: new Map(), removed: new Set() };
+  }
+}
+
+function watchRoots() {
+  for (const watcher of watchers) watcher.close();
+  watchers = [];
+  for (const rootPath of settings.roots) {
+    try {
+      const watcher = fsSync.watch(rootPath, { recursive: true }, (_, filename) => {
+        if (!filename) return;
+        changedPaths.add(path.join(rootPath, filename.toString()));
+        flushTimer ||= setTimeout(flushChanges, 3000);
+      });
+      watcher.on("error", () => {});
+      watchers.push(watcher);
+    } catch {
+      // 감시할 수 없는 위치는 건너뛴다 (전체 색인으로 반영)
+    }
+  }
+}
+
+async function flushChanges() {
+  flushTimer = null;
+  const paths = [...changedPaths];
+  changedPaths.clear();
+  const added = [];
+  const removed = [];
+  for (const target of paths) {
+    if (isExcluded(target, settings.excludedPaths)) continue;
+    try {
+      const stat = await fs.stat(target);
+      const extension = stat.isFile() ? path.extname(target).slice(1).toLocaleLowerCase() : "";
+      if (stat.isFile() || stat.isDirectory()) {
+        added.push({ name: path.basename(target), path: target, kind: stat.isDirectory() ? "folder" : "file", extension });
+      }
+    } catch {
+      removed.push(target);
+    }
+  }
+  if (!added.length && !removed.length) return;
+  for (const entry of added) {
+    delta.added.set(entry.path, entry);
+    delta.removed.delete(entry.path);
+  }
+  for (const target of removed) {
+    delta.added.delete(target);
+    delta.removed.add(target);
+  }
+  await fs.writeFile(deltaFile(), JSON.stringify({ added: [...delta.added.values()], removed: [...delta.removed] }), "utf8").catch(() => {});
+  await searchReady;
+  const updated = await askSearchWorker("update", { query: { added, removed } }).catch(() => null);
+  if (updated) meta.entryCount = updated.entryCount;
+  // 내용 색인 대상(문서·이미지)은 작은 worker로 바로 처리한다. 지워진 파일은 전체 색인 때 정리된다.
+  deltaQueue.push(...added.filter((entry) => entry.kind === "file" && SUPPORTED_EXTENSIONS.has(entry.extension)));
+  runDeltaContent();
+}
+
+function runDeltaContent() {
+  if (deltaWorker || !deltaQueue.length) return;
+  const batch = [...new Map(deltaQueue.map((entry) => [entry.path, entry])).values()];
+  deltaQueue = [];
+  deltaWorker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "delta" } });
+  const finish = () => {
+    deltaWorker?.terminate();
+    deltaWorker = null;
+    window?.webContents.send("index:changed", { count: batch.length });
+    runDeltaContent();
+  };
+  deltaWorker.on("message", (message) => { if (message.type === "done" || message.type === "error") finish(); });
+  deltaWorker.on("error", finish);
+  deltaWorker.postMessage({ type: "index", entries: batch });
+}
+
 async function refreshContent(targets) {
   return indexSummary(await indexContentInWorker(targets));
 }
@@ -295,8 +390,10 @@ async function rebuildIndex() {
     excludedPaths: settings.excludedPaths,
     onProgress: (progress) => window?.webContents.send("index:progress", progress)
   });
-  // 색인 파일에는 예전 버전과 호환되도록 설정도 함께 적는다.
+  // 색인 파일에는 예전 버전과 호환되도록 설정도 함께 적는다. 전체 색인이 변경분을 모두 담으므로 변경분은 비운다.
   await fs.writeFile(indexFile(), JSON.stringify({ ...settings, ...result }), "utf8");
+  delta = { added: new Map(), removed: new Set() };
+  await fs.rm(deltaFile(), { force: true });
   const targets = { documents: contentTargets(result.entries, "documents"), images: contentTargets(result.entries, "images") };
   searchReady = reloadIndex();
   await searchReady;

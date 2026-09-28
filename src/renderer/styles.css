@@ -47,8 +47,8 @@ header { max-width: 900px; margin: 0 auto; }
 .filterBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .filterToggle { border: 1px solid #313d58; border-radius: 8px; padding: 7px 12px; color: #cdd6ea; background: #151c2d; cursor: pointer; font-size: 13px; }
 .filterToggle[aria-expanded="true"], .filterToggle.active { border-color: #5b7cfa; color: #f4f6ff; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
-.chips:empty { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.clearFilters { margin-left: auto; flex: none; }
 .chip { display: inline-flex; align-items: center; gap: 4px; max-width: 320px; padding: 5px 6px 5px 10px; border-radius: 999px; background: #22305a; color: #dbe3ff; font-size: 12px; }
 .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip button { border: 0; padding: 0 4px; color: #9fb1ff; background: transparent; cursor: pointer; font-size: 13px; }
