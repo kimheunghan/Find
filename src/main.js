@@ -220,6 +220,21 @@ ipcMain.handle("roots:set", async (_, roots) => {
   return settings.roots;
 });
 
+// 확인 창: 메인 프로세스의 대화 상자로 묻고, 닫히면 창과 입력 칸에 포커스를 돌려준다.
+ipcMain.handle("ui:confirm", async (_, message) => {
+  const { response } = await dialog.showMessageBox(window, {
+    type: "question",
+    buttons: ["확인", "취소"],
+    defaultId: 0,
+    cancelId: 1,
+    title: "FindInside",
+    message: String(message)
+  });
+  window?.focus();
+  window?.webContents.focus();
+  return response === 0;
+});
+
 // ---- 메일 계정 (IMAP) ----
 // 비밀번호는 Windows DPAPI(safeStorage)로 암호화해 따로 저장한다. 설정 파일·로그에는 남기지 않는다 (ADR-0004 결정 7).
 function secretsFile() {

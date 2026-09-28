@@ -476,7 +476,7 @@ function renderMailPanel() {
     actions.append(
       button("설정", "secondary", () => openMailDialog(account)),
       button("삭제", "secondary", async () => {
-        if (!confirm(`"${account.name || account.email || account.user}" 계정을 삭제할까요? 이 계정에서 가져온 메일 색인도 지웁니다.`)) return;
+        if (!await window.findInside.confirm(`"${account.name || account.email || account.user}" 계정을 삭제할까요? 이 계정에서 가져온 메일 색인도 지웁니다.`)) return;
         await window.findInside.removeMail(account.id);
         await loadMailAccounts();
         if (queryEl.value.trim()) runSearch();
@@ -538,7 +538,7 @@ function renderMailAccounts() {
     remove.title = "계정 삭제 (이 계정에서 가져온 메일 색인도 지웁니다)";
     remove.textContent = "×";
     remove.addEventListener("click", async () => {
-      if (!confirm(`"${label.textContent}" 계정을 삭제할까요? 이 계정에서 가져온 메일 색인도 지웁니다.`)) return;
+      if (!await window.findInside.confirm(`"${label.textContent}" 계정을 삭제할까요? 이 계정에서 가져온 메일 색인도 지웁니다.`)) return;
       await window.findInside.removeMail(account.id);
       await loadMailAccounts();
       if (queryEl.value.trim()) runSearch();
@@ -698,7 +698,7 @@ mailForm.addEventListener("submit", async (event) => {
     mailTestResult.textContent = "비밀번호를 입력하세요.";
     return;
   }
-  if (account.security === "none" && !confirm("암호화하지 않고 연결합니다. 비밀번호와 메일이 그대로 전송됩니다. 계속할까요?")) return;
+  if (account.security === "none" && !await window.findInside.confirm("암호화하지 않고 연결합니다. 비밀번호와 메일이 그대로 전송됩니다. 계속할까요?")) return;
   await window.findInside.saveMail(account, password);
   mailDialog.close();
   await loadMailAccounts();

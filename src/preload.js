@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld("findInside", {
   openItem: (targetPath) => ipcRenderer.invoke("item:open", targetPath),
   showInFolder: (targetPath) => ipcRenderer.invoke("item:show", targetPath),
   openAt: (targetPath, phrase) => ipcRenderer.invoke("item:openAt", targetPath, phrase),
+  // 확인 창 (브라우저 confirm()은 닫힌 뒤 입력 칸이 막히는 Electron 문제가 있어 쓰지 않는다)
+  confirm: (message) => ipcRenderer.invoke("ui:confirm", message),
   mailAccounts: () => ipcRenderer.invoke("mail:accounts"),
   testMail: (account, password) => ipcRenderer.invoke("mail:test", account, password),
   saveMail: (account, password) => ipcRenderer.invoke("mail:save", account, password),
