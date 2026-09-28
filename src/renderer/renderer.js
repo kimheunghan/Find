@@ -21,6 +21,8 @@ let roots = [];
 let excludedPaths = [];
 let timer;
 let searchSequence = 0;
+// 검색 중인지. 색인 진행에 따른 자동 새로 고침은 앞 검색이 끝난 뒤에만 한다 (느린 검색을 계속 덮어쓰면 결과가 끝내 안 나온다)
+let searchInFlight = false;
 let filters = { scopes: [], kind: "all", extensions: [] };
 
 const menuItems = {
@@ -382,11 +384,13 @@ async function runSearch() {
   let failed = null;
   if (query) {
     const stopLoading = showLoading(sequence);
+    searchInFlight = true;
     try {
       result = await window.findInside.search(query, { ...filters, source, sort: sortEl.value });
     } catch (error) {
       failed = error;
     } finally {
+      if (sequence === searchSequence) searchInFlight = false;
       stopLoading();
     }
   }
@@ -795,7 +799,7 @@ window.findInside.onMailProgress(async (progress) => {
   work.mail = progress.finished ? null : { done: progress.done || 0, total: progress.total || 0 };
   refreshWorkHint();
   if (progress.finished && queryEl.value.trim()) runSearch();
-  else if (progress.total && queryEl.value.trim() && source !== "pc" && Date.now() - lastProgressSearch > 5000) {
+  else if (progress.total && queryEl.value.trim() && source !== "pc" && !searchInFlight && Date.now() - lastProgressSearch > 5000) {
     // 가져온 메일부터 검색되므로 진행 중에도 몇 초마다 결과를 새로 고친다
     lastProgressSearch = Date.now();
     runSearch();
@@ -978,7 +982,7 @@ window.findInside.onIndexProgress((progress) => {
   statusEl.textContent = `${ocrStatus ? `${ocrStatus}\n` : ""}파일 내용 색인 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}
 끝난 파일부터 검색 결과에 반영됩니다.`;
   // 색인 중에도 검색어가 있으면 몇 초마다 결과를 새로 고쳐 새로 색인된 내용을 보여 준다.
-  if (queryEl.value.trim() && Date.now() - lastProgressSearch > 5000) {
+  if (queryEl.value.trim() && !searchInFlight && Date.now() - lastProgressSearch > 5000) {
     lastProgressSearch = Date.now();
     runSearch();
   }
@@ -989,7 +993,7 @@ window.findInside.onIndexDone(showIndexDone);
 let lastChangedSearch = 0;
 window.findInside.onIndexChanged(() => {
   // 새 파일이 자주 반영되면 결과가 계속 다시 그려져 클릭이 막힌다. 10초에 한 번 이하, 입력 중이 아닐 때만.
-  if (!queryEl.value.trim() || document.activeElement === queryEl || Date.now() - lastChangedSearch < 10_000) return;
+  if (!queryEl.value.trim() || searchInFlight || document.activeElement === queryEl || Date.now() - lastChangedSearch < 10_000) return;
   lastChangedSearch = Date.now();
   runSearch();
 });
