@@ -330,6 +330,17 @@ function setFilterPanelOpen(open) {
 
 filterToggleEl.addEventListener("click", () => setFilterPanelOpen(filterPanelEl.hidden));
 
+document.addEventListener("click", (event) => {
+  if (!filterPanelEl.hidden && !event.target.closest("header")) setFilterPanelOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !filterPanelEl.hidden) {
+    setFilterPanelOpen(false);
+    filterToggleEl.focus();
+  }
+});
+
 clearFiltersEl.addEventListener("click", () => {
   filters = { scopes: [], kind: "all", extensions: [] };
   onFiltersChanged();

@@ -1,6 +1,11 @@
 "use strict";
 
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
+
+// 일부 Windows 환경에서 GPU 프로세스가 시작되지 않아 앱 전체가 종료되는 것을 막는다.
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-gpu-compositing");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { indexRoots } = require("./indexer");

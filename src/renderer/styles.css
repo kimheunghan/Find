@@ -24,7 +24,7 @@ h2 { font-size: 13px; color: #aeb8ce; margin: 0 0 12px; }
 .secondary { color: #cdd6ea; background: #1a2235; }
 .status { margin-top: 18px; font-size: 12px; line-height: 1.6; color: #8490aa; white-space: pre-line; }
 main { grid-row: 2; padding: 30px 44px; min-width: 0; }
-header { max-width: 900px; margin: 0 auto; }
+header { position: relative; z-index: 12; max-width: 900px; margin: 0 auto; }
 .searchBox { display: flex; align-items: center; gap: 12px; padding: 15px 18px; border: 1px solid #313d58; border-radius: 14px; background: rgba(19, 27, 44, .94); box-shadow: 0 20px 50px rgba(0,0,0,.22); }
 .searchBox span { color: #8fa5ff; font-size: 25px; }
 .searchBox input { width: 100%; border: 0; outline: 0; color: #f4f6ff; background: transparent; font-size: 17px; }
@@ -53,7 +53,7 @@ header { max-width: 900px; margin: 0 auto; }
 .chip button { border: 0; padding: 0 4px; color: #9fb1ff; background: transparent; cursor: pointer; font-size: 13px; }
 .chip button:hover { color: #fff; }
 .linkButton { border: 0; padding: 4px; color: #91a7ff; background: transparent; cursor: pointer; font-size: 12px; }
-.filterPanel { display: grid; gap: 14px; margin-top: 10px; padding: 16px 18px; border: 1px solid #2a3552; border-radius: 12px; background: rgba(17, 24, 40, .96); }
+.filterPanel { position: absolute; z-index: 30; top: calc(100% + 10px); left: 0; right: 0; display: grid; gap: 14px; max-height: min(520px, calc(100vh - 180px)); overflow-y: auto; padding: 16px 18px; border: 1px solid #364568; border-radius: 12px; background: rgba(17, 24, 40, .98); box-shadow: 0 22px 55px rgba(0, 0, 0, .52); }
 .filterRow { display: grid; grid-template-columns: 90px 1fr; gap: 12px; align-items: start; }
 .filterRow h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: #aeb8ce; }
 .optionButtons { display: flex; flex-wrap: wrap; gap: 6px; }
