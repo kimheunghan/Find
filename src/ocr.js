@@ -11,6 +11,9 @@ const { spawn } = require("node:child_process");
 const DEFAULT_ENGINE = process.env.FINDINSIDE_OCR === "paddle" || process.platform !== "win32" ? "paddle" : "windows";
 const TIMEOUT_MS = { windows: 60_000, paddle: 180_000 };
 const engines = new Map();
+// Windows OCR 프로세스 수. 하나는 CPU를 다 못 쓰므로 둘로 나눠 읽는다 (메모리가 넉넉하면 FINDINSIDE_OCR_WORKERS로 늘림).
+const WINDOWS_POOL = Math.max(1, Number(process.env.FINDINSIDE_OCR_WORKERS) || 2);
+let nextSlot = 0;
 
 function pythonExecutable() {
   if (process.env.FINDINSIDE_PYTHON) return process.env.FINDINSIDE_PYTHON;
@@ -99,8 +102,9 @@ function spawnEngine(name) {
   });
 }
 
-function engine(name) {
-  let state = engines.get(name);
+function engine(name, slot = 0) {
+  const key = `${name}#${slot}`;
+  let state = engines.get(key);
   if (state?.process && !state.process.killed) return state;
   state = { process: spawnEngine(name), pending: new Map(), nextId: 1, stdout: "", stderr: "" };
   // OCR은 CPU를 오래 쓰므로 낮은 우선순위로 돌려, 검색·화면 조작이 먼저 처리되게 한다.
@@ -109,7 +113,7 @@ function engine(name) {
   } catch {
     // 우선순위를 못 바꾸면 그대로 돈다
   }
-  engines.set(name, state);
+  engines.set(key, state);
   const failAll = (error) => {
     for (const request of state.pending.values()) {
       clearTimeout(request.timer);
@@ -142,11 +146,11 @@ function engine(name) {
   state.process.stderr.setEncoding("utf8");
   state.process.stderr.on("data", (data) => { state.stderr = `${state.stderr}${data}`.slice(-4000); });
   state.process.once("error", (error) => {
-    engines.delete(name);
+    engines.delete(key);
     failAll(new Error(`OCR 실행 준비가 필요합니다: ${error.message}`));
   });
   state.process.once("exit", (code) => {
-    if (engines.get(name) === state) engines.delete(name);
+    if (engines.get(key) === state) engines.delete(key);
     const detail = state.stderr.trim().split(/\r?\n/).slice(-1)[0];
     failAll(new Error(`OCR가 종료되었습니다${code === null ? "" : ` (${code})`}${detail ? `: ${detail}` : ""}`));
   });
@@ -155,7 +159,7 @@ function engine(name) {
 
 // 세로쓰기 다시 읽기: 첫 판독에서 찾은 세로 줄마다 원본 좌표로 글자 칸 크기·간격을 정해,
 // 한 글자 칸씩 잘라 가로로 이어 붙인 이미지를 다시 읽는다. 첫 판독에서 빠진 아래쪽 글자까지 읽기 위해서다.
-async function readVertical(filePath, first) {
+async function readVertical(filePath, first, slot = 0) {
   // 표의 숫자 칸 등이 세로 줄로 잡힐 수 있어, 한 이미지에서 다시 읽는 세로 줄 수를 제한한다.
   const columns = verticalColumns(first.lines).slice(0, 30);
   if (!columns.length) return [];
@@ -170,7 +174,7 @@ async function readVertical(filePath, first) {
   });
   let texts = [];
   try {
-    texts = (await request(filePath, "windows", { columns: requestColumns })).texts || [];
+    texts = (await request(filePath, "windows", { columns: requestColumns }, slot)).texts || [];
   } catch {
     texts = [];
   }
@@ -179,18 +183,20 @@ async function readVertical(filePath, first) {
 }
 
 async function extractImageText(filePath, name = DEFAULT_ENGINE) {
-  const first = await request(filePath, name);
+  // 이미지 한 장(첫 판독과 세로 다시 읽기)은 같은 OCR 프로세스에서 처리한다.
+  const slot = name === "windows" ? nextSlot++ % WINDOWS_POOL : 0;
+  const first = await request(filePath, name, {}, slot);
   if (first.chunks) return first.chunks;
   const horizontal = linesToChunks(first.lines);
-  const vertical = (await readVertical(filePath, first))
+  const vertical = (await readVertical(filePath, first, slot))
     .filter(Boolean)
     .map((text, index) => ({ location: { ocr: true, vertical: true, line: index + 1 }, text }));
   return [...horizontal, ...vertical];
 }
 
-function request(filePath, name, extra = {}) {
+function request(filePath, name, extra = {}, slot = 0) {
   return new Promise((resolve, reject) => {
-    const state = engine(name);
+    const state = engine(name, slot);
     const id = state.nextId++;
     // 첫 요청은 OCR 프로그램을 띄우고 모델을 불러오는 시간(메모리가 부족하면 1분 이상)까지 기다린다.
     const timeout = state.warm ? TIMEOUT_MS[name] : 300_000;

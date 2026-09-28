@@ -22,6 +22,8 @@ parentPort.on("message", async (message) => {
     const summary = await indexContent(db, message.entries, {
       owns,
       newestFirst: workerData.group === "images" || precise,
+      // 빠른 판독은 OCR 프로세스 2개로 동시에 읽는다
+      concurrency: workerData.group === "images" ? 2 : 1,
       extractOptions: { preciseOcr: precise },
       extractor: precise ? PRECISE_OCR_VERSION : undefined,
       onProgress: (progress) => parentPort.postMessage({ type: "progress", progress })

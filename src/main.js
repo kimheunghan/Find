@@ -349,6 +349,26 @@ function loadDelta() {
   }
 }
 
+// 감시하지 않는 곳: 캐시·임시 파일이 쉴 새 없이 바뀌는 시스템·앱 폴더와 이 앱의 데이터 폴더.
+// (C:\ 전체를 감시하면 AppData 캐시 변경이 3초마다 수천 건씩 몰려 메인 프로세스가 멈춘다)
+const WATCH_SKIP = /\\(appdata|\$recycle\.bin|system volume information|node_modules|\.git|\.cache|\.claude|\.vscode|\.gradle|temp|tmp)(\\|$)|^[a-z]:\\(windows|program files|program files \(x86\)|programdata)(\\|$)/i;
+const MAX_CHANGES_PER_FLUSH = 500;
+let deltaSaveTimer = null;
+
+function shouldWatch(target) {
+  const lower = target.toLocaleLowerCase();
+  if (lower.startsWith(path.resolve(app.getPath("userData")).toLocaleLowerCase())) return false;
+  return !WATCH_SKIP.test(target);
+}
+
+// 변경분 파일은 30초에 한 번만 쓴다 (변경 때마다 쓰면 메인 프로세스가 붙잡힌다).
+function saveDeltaLater() {
+  deltaSaveTimer ||= setTimeout(() => {
+    deltaSaveTimer = null;
+    fs.writeFile(deltaFile(), JSON.stringify({ added: [...delta.added.values()], removed: [...delta.removed] }), "utf8").catch(() => {});
+  }, 30_000);
+}
+
 function watchRoots() {
   for (const watcher of watchers) watcher.close();
   watchers = [];
@@ -356,7 +376,9 @@ function watchRoots() {
     try {
       const watcher = fsSync.watch(rootPath, { recursive: true }, (_, filename) => {
         if (!filename) return;
-        changedPaths.add(path.join(rootPath, filename.toString()));
+        const target = path.join(rootPath, filename.toString());
+        if (!shouldWatch(target)) return;
+        changedPaths.add(target);
         flushTimer ||= setTimeout(flushChanges, 3000);
       });
       watcher.on("error", () => {});
@@ -369,8 +391,10 @@ function watchRoots() {
 
 async function flushChanges() {
   flushTimer = null;
-  const paths = [...changedPaths];
-  changedPaths.clear();
+  // 한 번에 너무 많이 처리하지 않는다. 남은 것은 다음 차례에.
+  const paths = [...changedPaths].slice(0, MAX_CHANGES_PER_FLUSH);
+  for (const target of paths) changedPaths.delete(target);
+  if (changedPaths.size) flushTimer ||= setTimeout(flushChanges, 3000);
   const added = [];
   const removed = [];
   for (const target of paths) {
@@ -394,7 +418,7 @@ async function flushChanges() {
     delta.added.delete(target);
     delta.removed.add(target);
   }
-  await fs.writeFile(deltaFile(), JSON.stringify({ added: [...delta.added.values()], removed: [...delta.removed] }), "utf8").catch(() => {});
+  saveDeltaLater();
   await searchReady;
   const updated = await askSearchWorker("update", { query: { added, removed } }).catch(() => null);
   if (updated) meta.entryCount = updated.entryCount;

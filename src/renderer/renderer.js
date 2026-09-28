@@ -521,8 +521,12 @@ window.findInside.onIndexProgress((progress) => {
 
 window.findInside.onIndexDone(showIndexDone);
 // 폴더 감시로 새 파일·바뀐 파일의 내용 색인이 끝나면 지금 검색어로 결과를 새로 고친다.
+let lastChangedSearch = 0;
 window.findInside.onIndexChanged(() => {
-  if (queryEl.value.trim()) runSearch();
+  // 새 파일이 자주 반영되면 결과가 계속 다시 그려져 클릭이 막힌다. 10초에 한 번 이하, 입력 중이 아닐 때만.
+  if (!queryEl.value.trim() || document.activeElement === queryEl || Date.now() - lastChangedSearch < 10_000) return;
+  lastChangedSearch = Date.now();
+  runSearch();
 });
 
 (async () => {

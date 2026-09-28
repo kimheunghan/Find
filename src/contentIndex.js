@@ -162,13 +162,16 @@ async function indexContent(db, entries, options = {}) {
     ...supported.filter((entry) => IMAGE_EXTENSIONS.has(entry.extension))
   ];
   // newestFirst: 최근에 바뀐 파일부터 처리한다 (이미지 OCR은 한 장에 수 초라, 방금 만든 캡처를 먼저 찾을 수 있게).
+  // OCR하지 않는 시스템·앱 폴더 이미지(6만여 장)는 맨 뒤로 보내, 실제로 읽을 사용자 이미지를 먼저 처리한다.
   if (options.newestFirst) {
+    const skipped = targets.filter((entry) => OCR_SKIP_PATH.test(entry.path));
     const stamped = [];
     for (const entry of targets) {
+      if (OCR_SKIP_PATH.test(entry.path)) continue;
       const modified = await fs.stat(entry.path).then((stat) => stat.mtimeMs, () => 0);
       stamped.push([modified, entry]);
     }
-    targets = stamped.sort((a, b) => b[0] - a[0]).map(([, entry]) => entry);
+    targets = [...stamped.sort((a, b) => b[0] - a[0]).map(([, entry]) => entry), ...skipped];
   }
   // options.owns(path): 이 작업이 맡은 파일인지 (문서 worker와 OCR worker가 동시에 돌 때 서로의 기록을 지우지 않게)
   const owns = options.owns || (() => true);
@@ -176,14 +179,16 @@ async function indexContent(db, entries, options = {}) {
     .filter((row) => owns(row.path))
     .map((row) => [row.path, row]));
   const summary = { total: targets.length, extracted: 0, skipped: 0, errors: 0 };
+  let completed = 0;
 
-  for (const [index, entry] of targets.entries()) {
+  // 파일 하나를 처리한다. options.concurrency개를 동시에 돌린다 (이미지 OCR은 OCR 프로세스 여러 개로 나눠 읽는다).
+  const processOne = async (entry) => {
     known.delete(entry.path);
     let stat;
     try {
       stat = await fs.stat(entry.path);
     } catch {
-      continue;
+      return;
     }
     const previous = db.prepare("SELECT size, modified_at, status, extractor FROM files WHERE path = ?").get(entry.path);
     const unchanged = previous && previous.size === stat.size && previous.modified_at === Math.trunc(stat.mtimeMs);
@@ -214,10 +219,29 @@ async function indexContent(db, entries, options = {}) {
       if (failure || !saved) summary.errors += 1;
       else summary.extracted += 1;
     }
-    if ((index + 1) % 20 === 0 || index + 1 === targets.length) {
-      onProgress({ done: index + 1, total: targets.length, current: entry.path });
+  };
+
+  let next = 0;
+  const runner = async () => {
+    while (next < targets.length) {
+      const entry = targets[next];
+      next += 1;
+      await processOne(entry);
+      completed += 1;
+      if (completed % 20 === 0 || completed === targets.length) {
+        onProgress({ done: completed, total: targets.length, current: entry.path });
+      }
+      // WAL(쓰기 기록)이 커지면 읽기도 느려진다. 200개마다 본 DB에 반영한다.
+      if (completed % 200 === 0) {
+        try {
+          db.exec("PRAGMA wal_checkpoint(PASSIVE)");
+        } catch {
+          // 다른 연결이 쓰는 중이면 다음에
+        }
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, options.concurrency || 1) }, runner));
 
   // 이름 색인에서 사라진 파일(삭제·제외·검색 위치에서 빠짐)은 내용 색인에서도 지운다.
   transaction(db, () => {
