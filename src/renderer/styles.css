@@ -104,3 +104,13 @@ header { max-width: 900px; margin: 0 auto; }
 .mailWarn { margin: 8px 0 0; color: #f0b86e; font-size: 12px; }
 .mailButtons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .mailButtons button { width: auto; padding: 8px 14px; margin: 0; }
+.mailPanel { display: grid; gap: 10px; margin-top: 12px; padding: 16px 18px; border: 1px solid #2a3552; border-radius: 12px; background: rgba(17, 24, 40, .96); }
+.mailPanel[hidden] { display: none; }
+.mailPanel h3 { margin: 0; font-size: 15px; }
+.mailPanel p { margin: 0; color: #9aa6c0; font-size: 13px; line-height: 1.6; }
+.mailConnect { display: flex; flex-wrap: wrap; gap: 8px; }
+.mailConnect button, .mailAccountCard button { width: auto; margin: 0; padding: 9px 16px; }
+.mailAccountCard { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-radius: 9px; background: #151c2d; font-size: 13px; }
+.mailAccountCard strong { color: #eef2ff; }
+.mailAccountCard small { color: #8894ae; }
+.mailAccountCard .mailWarn { margin: 0; }

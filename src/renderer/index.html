@@ -56,6 +56,7 @@
         </div>
       </header>
 
+      <div id="mailPanel" class="mailPanel" hidden></div>
       <div id="filterPanel" class="filterPanel" hidden>
           <div class="filterRow">
             <h3>검색 범위</h3>
@@ -121,11 +122,28 @@
 
     <dialog id="mailDialog" class="mailDialog">
       <form id="mailForm" method="dialog">
-        <h3>메일 계정 (IMAP)</h3>
-        <p class="filterHelp">회사 메일·네이버·다음 등 IMAP을 지원하는 메일. 서버 정보는 메일 서비스의 "IMAP 설정" 안내를 보고 입력하세요.</p>
+        <h3 id="mailDialogTitle">메일 계정 연결</h3>
+        <p class="filterHelp">회사 메일·네이버·다음 등. 서버 정보는 메일 서비스의 "IMAP/POP3 설정" 안내를 보고 입력하세요. IMAP은 모든 폴더를, POP3는 받은편지함만 가져옵니다.</p>
+        <label>메일 서비스
+          <select name="preset">
+            <option value="">직접 입력</option>
+            <option value="mailplug">메일플러그 (회사 메일)</option>
+            <option value="naver">네이버 메일</option>
+            <option value="daum">다음·카카오 메일</option>
+            <option value="gmail">Gmail</option>
+            <option value="outlook">Outlook.com·Hotmail</option>
+          </select>
+        </label>
+        <p id="mailPresetNote" class="filterHelp"></p>
+        <label>연결 방식
+          <select name="protocol">
+            <option value="imap">IMAP (권장)</option>
+            <option value="pop3">POP3</option>
+          </select>
+        </label>
         <label>표시 이름<input name="name" placeholder="예: 회사 메일" /></label>
         <label>이메일 주소<input name="email" type="email" placeholder="kim@company.com" /></label>
-        <label>IMAP 서버<input name="host" required placeholder="예: imap.company.com" /></label>
+        <label><span id="mailHostLabel">IMAP 서버</span><input name="host" required placeholder="예: imap.company.com" /></label>
         <div class="mailRow">
           <label>보안 방식
             <select name="security">

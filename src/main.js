@@ -278,8 +278,8 @@ function askMailWorker(type, payload) {
   });
 }
 
-const publicAccount = ({ id, name, email, host, port, security, user, allowSelfSigned, lastSync, lastError }) =>
-  ({ id, name, email, host, port, security, user, allowSelfSigned, lastSync, lastError });
+const publicAccount = ({ id, protocol, preset, name, email, host, port, security, user, allowSelfSigned, lastSync, lastError }) =>
+  ({ id, protocol: protocol || "imap", preset: preset || "", name, email, host, port, security, user, allowSelfSigned, lastSync, lastError });
 
 let mailSyncing = null;
 
@@ -341,13 +341,14 @@ ipcMain.handle("mail:sync", () => syncMail());
 // 메일 열기: 서버에서 원문을 받아 임시 .eml로 저장하고 기본 메일 프로그램으로 연다 (원문은 PC에 쌓아 두지 않음)
 ipcMain.handle("mail:open", async (_, mailUri) => {
   const { parseMailPath } = require("./imap");
-  const target = parseMailPath(mailUri);
+  const { parsePopPath } = require("./pop3");
+  const target = mailUri.startsWith("pop3://") ? parsePopPath(mailUri) : parseMailPath(mailUri);
   const account = target && settings.mailAccounts.find((item) => item.id === target.account);
   if (!account) throw new Error("메일 계정을 찾을 수 없습니다");
   const { source } = await askMailWorker("fetch", { account, password: await loadPassword(account.id), folder: target.folder, uid: target.uid });
   const dir = path.join(os.tmpdir(), "FindInside-mail");
   await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${target.uid}.eml`);
+  const file = path.join(dir, `${String(target.uid).replace(/[^\w.-]/g, "_")}.eml`);
   await fs.writeFile(file, Buffer.from(source, "base64"));
   return shell.openPath(file);
 });

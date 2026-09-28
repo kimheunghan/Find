@@ -5,7 +5,11 @@
 // 비밀번호는 메인 프로세스가 복호화해 메시지로만 넘기고, 여기서는 저장하지 않는다.
 const { parentPort, workerData } = require("node:worker_threads");
 const { openContentIndex, removeMailFolder } = require("./contentIndex");
-const { testConnection, syncAccount, fetchSource } = require("./imap");
+const imap = require("./imap");
+const pop3 = require("./pop3");
+
+// 계정의 연결 방식(IMAP·POP3)에 맞는 모듈
+const protocolOf = (account) => (account?.protocol === "pop3" ? pop3 : imap);
 const { stopOcr } = require("./ocr");
 
 const db = openContentIndex(workerData.dbPath, { migrate: false });
@@ -25,9 +29,9 @@ function friendlyError(error) {
 parentPort.on("message", async ({ id, type, account, password, folder, uid }) => {
   try {
     if (type === "test") {
-      parentPort.postMessage({ id, result: await testConnection(account, password) });
+      parentPort.postMessage({ id, result: await protocolOf(account).testConnection(account, password) });
     } else if (type === "sync") {
-      const result = await syncAccount(db, account, password, {
+      const result = await protocolOf(account).syncAccount(db, account, password, {
         onProgress: (progress) => parentPort.postMessage({ type: "progress", progress })
       });
       parentPort.postMessage({ id, result });
@@ -35,7 +39,9 @@ parentPort.on("message", async ({ id, type, account, password, folder, uid }) =>
       removeMailFolder(db, account.id);
       parentPort.postMessage({ id, result: true });
     } else if (type === "fetch") {
-      const source = await fetchSource(account, password, folder, uid);
+      const source = account.protocol === "pop3"
+        ? await pop3.fetchSource(account, password, uid)
+        : await imap.fetchSource(account, password, folder, uid);
       parentPort.postMessage({ id, result: { source: Buffer.from(source).toString("base64") } });
     }
   } catch (error) {

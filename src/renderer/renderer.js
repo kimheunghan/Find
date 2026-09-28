@@ -415,9 +415,75 @@ document.querySelectorAll(".sourceTabs [data-source]").forEach((tab) => {
   tab.addEventListener("click", () => {
     source = tab.dataset.source;
     document.querySelectorAll(".sourceTabs [data-source]").forEach((item) => item.setAttribute("aria-selected", String(item === tab)));
+    applySourceView();
     runSearch();
   });
 });
+
+// 메일 탭: PC용 상세 조건(범위·확장자) 대신 메일 계정 연결·상태를 보여 준다
+function applySourceView() {
+  const isMail = source === "mail";
+  document.querySelector(".filterBar").hidden = isMail;
+  if (isMail) filterPanelEl.hidden = true;
+  else setFilterPanelOpen(loadFilterPanelOpen());
+  document.querySelector("#mailPanel").hidden = !isMail;
+  if (isMail) renderMailPanel();
+}
+
+function renderMailPanel() {
+  const panel = document.querySelector("#mailPanel");
+  const button = (text, className, onClick) => {
+    const element = document.createElement("button");
+    element.type = "button";
+    element.className = className;
+    element.textContent = text;
+    element.addEventListener("click", onClick);
+    return element;
+  };
+  if (!mailAccounts.length) {
+    const title = document.createElement("h3");
+    title.textContent = "메일 계정을 연결하세요";
+    const help = document.createElement("p");
+    help.textContent = "연결한 계정의 메일 제목·보낸 사람·본문·첨부파일 내용까지 검색합니다. 메일은 이 PC에서만 색인하고 외부로 보내지 않습니다.";
+    const actions = document.createElement("div");
+    actions.className = "mailConnect";
+    actions.append(
+      button("IMAP으로 연결 (권장)", "primary", () => openMailDialog(null, "imap")),
+      button("POP3로 연결", "secondary", () => openMailDialog(null, "pop3"))
+    );
+    panel.replaceChildren(title, help, actions);
+    return;
+  }
+  const title = document.createElement("h3");
+  title.textContent = `연결된 메일 계정 ${mailAccounts.length}개`;
+  const cards = mailAccounts.map((account) => {
+    const card = document.createElement("div");
+    card.className = "mailAccountCard";
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = account.name || account.email || account.user;
+    const detail = document.createElement("small");
+    detail.textContent = `  ${(account.protocol || "imap").toUpperCase()} · ${account.host} · ${account.lastSync ? `마지막 가져오기 ${account.lastSync.slice(0, 16).replace("T", " ")}` : "아직 가져오지 않음"}`;
+    info.append(name, detail);
+    if (account.lastError) {
+      const warn = document.createElement("p");
+      warn.className = "mailWarn";
+      warn.textContent = `⚠ ${account.lastError}`;
+      info.append(warn);
+    }
+    card.append(info, button("설정", "secondary", () => openMailDialog(account)));
+    return card;
+  });
+  const actions = document.createElement("div");
+  actions.className = "mailConnect";
+  actions.append(
+    button("지금 새 메일 가져오기", "primary", () => document.querySelector("#syncMail").click()),
+    button("+ 계정 추가", "secondary", () => openMailDialog(null, "imap"))
+  );
+  const status = document.createElement("p");
+  status.textContent = mailStatusEl.textContent;
+  panel.replaceChildren(title, ...cards, actions, status);
+}
 
 // ---- 메일 ----
 function mailSummary(item) {
@@ -470,6 +536,7 @@ function renderMailAccounts() {
     return item;
   }));
   document.querySelector("#syncMail").hidden = !mailAccounts.length;
+  if (source === "mail") renderMailPanel();
 }
 
 async function loadMailAccounts() {
@@ -481,6 +548,8 @@ function formAccount() {
   const data = new FormData(mailForm);
   return {
     id: editingAccount?.id,
+    protocol: data.get("protocol"),
+    preset: data.get("preset") || "",
     name: data.get("name").trim(),
     email: data.get("email").trim(),
     host: data.get("host").trim(),
@@ -491,9 +560,61 @@ function formAccount() {
   };
 }
 
-function openMailDialog(account = null) {
+// 메일 서비스별 서버 정보. 고르면 서버·포트·보안 방식을 채운다 (사용자가 바꿀 수 있음).
+// 서비스마다 IMAP/POP3 사용 설정을 켜고 "앱 비밀번호"를 따로 만들어야 하는 경우가 많다.
+const MAIL_PRESETS = {
+  mailplug: { imap: ["imap.mailplug.co.kr", 993, "ssl"], note: "메일플러그 관리 화면에서 IMAP 사용을 켜고, 비밀번호 칸에는 앱 비밀번호를 넣으세요. 아이디는 메일 주소입니다. POP3 서버 주소는 메일플러그 설정 안내를 확인하세요." },
+  naver: { imap: ["imap.naver.com", 993, "ssl"], pop3: ["pop.naver.com", 995, "ssl"], note: "네이버 메일 환경설정에서 IMAP/POP3 사용을 켜세요. 2단계 인증을 쓰면 애플리케이션 비밀번호가 필요합니다." },
+  daum: { imap: ["imap.daum.net", 993, "ssl"], pop3: ["pop.daum.net", 995, "ssl"], note: "다음 메일 환경설정에서 IMAP/POP3 사용을 켜세요." },
+  gmail: { imap: ["imap.gmail.com", 993, "ssl"], pop3: ["pop.gmail.com", 995, "ssl"], note: "Google 계정의 앱 비밀번호(16자리)를 만들어 비밀번호 칸에 넣으세요." },
+  outlook: { imap: ["outlook.office365.com", 993, "ssl"], pop3: ["outlook.office365.com", 995, "ssl"], note: "Microsoft 계정은 앱 비밀번호가 필요할 수 있습니다. 회사 Microsoft 365 메일은 IMAP이 막혀 있을 수 있습니다." }
+};
+
+function applyPreset() {
+  const preset = MAIL_PRESETS[mailForm.elements.preset.value];
+  const note = document.querySelector("#mailPresetNote");
+  note.textContent = preset?.note || "";
+  if (!preset) return;
+  const settings = preset[mailForm.elements.protocol.value];
+  if (!settings) {
+    mailForm.elements.host.value = "";
+    return;
+  }
+  const [host, port, security] = settings;
+  mailForm.elements.host.value = host;
+  mailForm.elements.security.value = security;
+  mailForm.elements.port.value = String(port);
+  document.querySelector("#mailNoTls").hidden = true;
+  if (!mailForm.elements.name.value) mailForm.elements.name.value = mailForm.elements.preset.selectedOptions[0].textContent.replace(/\s*\(.*\)$/, "");
+}
+
+mailForm.elements.preset.addEventListener("change", applyPreset);
+
+// 아이디는 보통 메일 주소 전체라서, 이메일을 넣으면 아이디 칸을 채운다
+let lastEmail = "";
+mailForm.elements.email.addEventListener("input", () => {
+  const user = mailForm.elements.user;
+  if (!user.value || user.value === lastEmail) user.value = mailForm.elements.email.value.trim();
+  lastEmail = mailForm.elements.email.value.trim();
+});
+
+function applyProtocol() {
+  const pop = mailForm.elements.protocol.value === "pop3";
+  document.querySelector("#mailHostLabel").textContent = pop ? "POP3 서버" : "IMAP 서버";
+  mailForm.elements.host.placeholder = pop ? "예: pop.company.com" : "예: imap.company.com";
+}
+
+function defaultPort() {
+  const pop = mailForm.elements.protocol.value === "pop3";
+  const security = mailForm.elements.security.value;
+  if (pop) return security === "ssl" ? "995" : "110";
+  return security === "ssl" ? "993" : "143";
+}
+
+function openMailDialog(account = null, protocol = "imap") {
   editingAccount = account;
   mailForm.reset();
+  mailForm.elements.protocol.value = account?.protocol || protocol;
   for (const [key, value] of Object.entries(account || {})) {
     const field = mailForm.elements[key];
     if (!field) continue;
@@ -501,6 +622,10 @@ function openMailDialog(account = null) {
     else field.value = value ?? "";
   }
   mailForm.elements.password.placeholder = account ? "바꾸지 않으려면 비워 두세요" : "앱 비밀번호가 필요한 서비스도 있습니다";
+  if (!account) mailForm.elements.port.value = defaultPort();
+  lastEmail = account?.email || "";
+  document.querySelector("#mailPresetNote").textContent = "";
+  applyProtocol();
   mailTestResult.textContent = "";
   document.querySelector("#mailNoTls").hidden = mailForm.elements.security.value !== "none";
   mailDialog.showModal();
@@ -508,10 +633,15 @@ function openMailDialog(account = null) {
 
 // 보안 방식을 바꾸면 흔히 쓰는 포트를 채워 준다 (직접 바꿀 수 있음)
 mailForm.elements.security.addEventListener("change", () => {
-  const security = mailForm.elements.security.value;
   const port = mailForm.elements.port;
-  if (["993", "143", ""].includes(port.value)) port.value = security === "ssl" ? "993" : "143";
-  document.querySelector("#mailNoTls").hidden = security !== "none";
+  if (["993", "143", "995", "110", ""].includes(port.value)) port.value = defaultPort();
+  document.querySelector("#mailNoTls").hidden = mailForm.elements.security.value !== "none";
+});
+mailForm.elements.protocol.addEventListener("change", () => {
+  const port = mailForm.elements.port;
+  if (["993", "143", "995", "110", ""].includes(port.value)) port.value = defaultPort();
+  applyProtocol();
+  applyPreset();
 });
 
 document.querySelector("#addMailAccount").addEventListener("click", () => openMailDialog());
@@ -558,6 +688,7 @@ window.findInside.onMailProgress(async (progress) => {
   } else if (progress.started) {
     mailStatusEl.textContent = `${label}: 메일 서버에 연결하는 중…`;
   }
+  if (source === "mail") renderMailPanel();
 });
 
 loadMailAccounts();
