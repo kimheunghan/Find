@@ -1,0 +1,44 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="site.css"><style>
+html,body{margin:0;width:1600px;height:1200px;overflow:hidden;background:#0b1122}
+.hero{height:1200px;display:flex;align-items:center;padding:0}
+.hero .wrap{max-width:1440px;padding:0 60px}
+.hero-grid{gap:64px}
+.hero h1{font-size:76px}.answer{font-size:32px}.sub{font-size:23px}.note{font-size:19px}.eyebrow{font-size:18px}
+.demo{transform:none;font-size:16px}.demo-body{padding:22px}.demo-search{font-size:20px}.demo-hit p{font-size:15px}
+.logo{display:flex;align-items:center;gap:14px;margin-bottom:34px;color:#fff;font-weight:800;font-size:30px}
+</style></head><body><section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy"><div class="logo"><img src="icon.png" width="48" height="48"> FindInside</div>
+      <p class="eyebrow">윈도우 PC용 문서 내용 검색 프로그램</p>
+      <h1>그 자료,<br /><em>어디 있었더라?</em></h1>
+      <p class="answer">내 PC 문서와 메일 속 내용까지, 한 번에 검색하세요.</p>
+      <p class="sub">파일 이름이 기억나지 않아도 괜찮습니다. 한글·엑셀·PDF 문서 <strong>안에 적힌 글자</strong>, 캡처 이미지 속 글자, 회사 메일과 첨부파일까지 검색해서 <strong>몇 쪽, 어느 셀</strong>에 있는지 바로 보여 줍니다.</p>
+      
+      <p class="note">14일 무료 체험 · 카드 등록 없음 · 파일은 내 PC 밖으로 나가지 않음</p>
+    </div>
+
+    <div class="demo" aria-label="FindInside 검색 화면 예시">
+      <div class="demo-bar"><span></span><span></span><span></span><b>FindInside</b></div>
+      <div class="demo-body">
+        <div class="demo-search"><i>⌕</i> 서버 IP 192.168<span class="caret"></span></div>
+        <div class="demo-tabs"><span class="on">전체 4</span><span>PC 파일 3</span><span>메일 1</span></div>
+        <div class="demo-hit">
+          <div class="demo-head"><span class="ft xls">XLSX</span><b>설치정보.xlsx</b><small>2026-09-22</small></div>
+          <p><span class="loc">서버목록 시트 · C12</span>WEB 서버 <mark>IP</mark> <mark>192.168</mark>.10.21 / DB 서버 …</p>
+        </div>
+        <div class="demo-hit">
+          <div class="demo-head"><span class="ft hwp">HWP</span><b>제안요청서_최종(2).hwp</b><small>2026-06-18</small></div>
+          <p><span class="loc">15쪽</span>…운영 <mark>서버</mark> <mark>IP</mark> 대역은 <mark>192.168</mark>.10.0/24로…</p>
+        </div>
+        <div class="demo-hit">
+          <div class="demo-head"><span class="ft mail">메일</span><b>RE: 자료 전달드립니다</b><small>2026-09-03</small></div>
+          <p><span class="loc">첨부 설치가이드.pdf · 3쪽</span>…접속 <mark>서버</mark> <mark>IP</mark>: <mark>192.168</mark>.10.30…</p>
+        </div>
+        <div class="demo-hit">
+          <div class="demo-head"><span class="ft img">PNG</span><b>화면캡처_0921.png</b><small>2026-09-21</small></div>
+          <p><span class="loc">이미지 속 글자</span>관리 콘솔 · <mark>서버</mark> <mark>IP</mark> <mark>192.168</mark>.10.21 정상</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section></body></html>
