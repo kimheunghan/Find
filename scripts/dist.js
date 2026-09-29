@@ -8,6 +8,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..");
+// 이용약관·개인정보처리방침·오픈소스 고지를 product.json 값으로 다시 만든다 (비어 있는 판매 정보는 경고)
+const { missing } = require("./build-docs");
 const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
 const output = path.join("release", `build-${stamp}`);
 execFileSync(process.execPath, [require.resolve("electron-builder/cli.js"), "--win", "nsis", "--x64", "--publish", "never", `--config.directories.output=${output}`], { cwd: root, stdio: "inherit" });
@@ -15,6 +17,7 @@ execFileSync(process.execPath, [require.resolve("electron-builder/cli.js"), "--w
 const built = path.join(root, output, "Find_Setup.exe");
 if (!fs.existsSync(built)) throw new Error(`설치 파일이 만들어지지 않았습니다: ${built}`);
 fs.copyFileSync(built, path.join(root, "release", "Find_Setup.exe"));
+if (missing.length) console.warn(`⚠ 판매용이 아닌 시험 빌드입니다. src/product.json에 비어 있는 값: ${missing.length}개`);
 console.log(`설치 파일: ${path.join("release", "Find_Setup.exe")} (${(fs.statSync(built).size / 1048576).toFixed(0)}MB, ${new Date().toLocaleString("ko-KR")})`);
 
 // 이전 빌드 폴더는 지울 수 있으면 지운다 (잠겨 있으면 다음에)

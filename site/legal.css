@@ -1,0 +1,16 @@
+:root { color-scheme: light dark; --text: #1b2233; --muted: #5a6479; --line: #d9deea; --bg: #ffffff; --accent: #3d5ce0; }
+@media (prefers-color-scheme: dark) {
+  :root { --text: #e6eaf5; --muted: #9aa6c0; --line: #2c3854; --bg: #0d1321; --accent: #8fa6ff; }
+}
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.75 "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
+h1 { font-size: 24px; line-height: 1.4; margin: 0 0 4px; }
+h2 { font-size: 17px; margin: 32px 0 8px; }
+.meta { color: var(--muted); margin: 0 0 20px; }
+.lead { padding: 12px 16px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+a { color: var(--accent); }
+ol, ul { padding-left: 22px; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+th, td { padding: 8px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: color-mix(in srgb, var(--line) 40%, transparent); }
+pre { white-space: pre-wrap; font-size: 12px; }

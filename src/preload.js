@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld("findInside", {
   openMail: (mailUri) => ipcRenderer.invoke("mail:open", mailUri),
   onMailProgress: (callback) => ipcRenderer.on("mail:progress", (_, value) => callback(value)),
   runMenuAction: (action) => ipcRenderer.invoke("menu:action", action),
+  licenseStatus: () => ipcRenderer.invoke("license:status"),
+  activateLicense: (key) => ipcRenderer.invoke("license:activate", key),
+  deactivateLicense: () => ipcRenderer.invoke("license:deactivate"),
+  checkLicense: () => ipcRenderer.invoke("license:check"),
+  buyLicense: () => ipcRenderer.invoke("license:buy"),
+  onLicenseChanged: (callback) => ipcRenderer.on("license:changed", (_, value) => callback(value)),
+  openLegal: (name) => ipcRenderer.invoke("legal:open", name),
   onIndexProgress: (callback) => ipcRenderer.on("index:progress", (_, value) => callback(value)),
   onIndexDone: (callback) => ipcRenderer.on("index:done", (_, value) => callback(value)),
   onIndexChanged: (callback) => ipcRenderer.on("index:changed", (_, value) => callback(value))

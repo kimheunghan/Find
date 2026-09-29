@@ -11,11 +11,11 @@
       <button type="button" data-menu="file">파일</button>
       <button type="button" data-menu="edit">편집</button>
       <button type="button" data-menu="view">보기</button>
-      <button type="button" data-action="about">도움말</button>
+      <button type="button" data-menu="help">도움말</button>
       <div id="menuPopup" class="menuPopup" hidden></div>
     </nav>
     <aside class="sidebar">
-      <div class="brand"><span>F</span> FindInside</div>
+      <div class="brand"><img src="icon.png" alt="" /> FindInside</div>
       <p class="tagline">이름을 몰라도, 기억나는 내용으로.</p>
       <section>
         <h2>검색 위치</h2>
@@ -39,6 +39,8 @@
     </aside>
 
     <main>
+      <div id="licenseBar" class="licenseBar" hidden></div>
+      <div id="licenseGate" class="licenseGate" hidden></div>
       <header>
         <label class="searchBox">
           <span>⌕</span>
@@ -173,6 +175,24 @@
           <button type="button" id="mailTest" class="secondary">연결 시험</button>
           <button type="button" id="mailCancel" class="secondary">취소</button>
           <button type="submit" id="mailSave" class="primary">저장</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="licenseDialog" class="mailDialog licenseDialog">
+      <form id="licenseForm" method="dialog">
+        <div class="mailBody">
+          <h3>FindInside 라이선스</h3>
+          <p id="licenseSummary" class="licenseSummary"></p>
+          <label>라이선스 키<input name="key" autocomplete="off" spellcheck="false" placeholder="구매 메일에 있는 키를 붙여 넣으세요" /></label>
+          <p class="filterHelp">키를 확인할 때만 판매 대행사(Lemon Squeezy)에 키를 보냅니다. 파일·메일 내용은 보내지 않습니다.</p>
+          <p id="licenseMessage" class="filterHelp"></p>
+        </div>
+        <div class="mailButtons">
+          <button type="button" id="licenseDeactivate" class="secondary" hidden>이 PC에서 해제</button>
+          <button type="button" id="licenseBuy" class="secondary">구매하기</button>
+          <button type="button" id="licenseClose" class="secondary">닫기</button>
+          <button type="submit" id="licenseActivate" class="primary">활성화</button>
         </div>
       </form>
     </dialog>

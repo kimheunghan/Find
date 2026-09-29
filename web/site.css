@@ -1,0 +1,44 @@
+:root { color-scheme: light dark; --text: #151c2c; --muted: #58627a; --line: #dfe3ee; --bg: #ffffff; --soft: #f4f6fb; --accent: #4466e8; --accent-text: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root { --text: #e8ecf7; --muted: #a0abc4; --line: #273250; --bg: #090d18; --soft: #111a2c; --accent: #6f8cff; --accent-text: #0b1020; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.7 "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+a { color: var(--accent); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+.top { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.nav { display: flex; align-items: center; justify-content: space-between; min-height: 56px; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 8px; color: var(--text); font-weight: 700; text-decoration: none; }
+.nav nav { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
+.nav nav a { color: var(--muted); text-decoration: none; }
+.hero { padding: 72px 0 56px; text-align: center; }
+.eyebrow { margin: 0 0 12px; color: var(--accent); font-weight: 700; font-size: 14px; }
+.hero h1 { margin: 0 0 16px; font-size: clamp(30px, 6vw, 48px); line-height: 1.25; letter-spacing: -0.02em; }
+.sub { max-width: 680px; margin: 0 auto 28px; color: var(--muted); font-size: 18px; }
+.cta { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.button { display: inline-block; padding: 13px 22px; border-radius: 10px; font-weight: 700; text-decoration: none; }
+.button.primary { background: var(--accent); color: var(--accent-text); }
+.button.ghost { border: 1px solid var(--line); color: var(--text); }
+.note { margin-top: 14px; color: var(--muted); font-size: 14px; }
+.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; padding-bottom: 56px; }
+.features article { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); }
+.features h3 { margin: 0 0 6px; font-size: 18px; }
+.features p { margin: 0; color: var(--muted); font-size: 15px; }
+.band { padding: 48px 0; background: var(--soft); border-block: 1px solid var(--line); }
+.band h2, .pricing h2, .faq h2 { margin: 0 0 16px; font-size: 26px; }
+.checks { margin: 0 0 12px; padding: 0; list-style: none; }
+.checks li { padding: 6px 0 6px 28px; position: relative; }
+.checks li::before { content: "✓"; position: absolute; left: 4px; color: var(--accent); font-weight: 700; }
+.pricing { padding: 56px 16px; text-align: center; }
+.card { max-width: 420px; margin: 0 auto; padding: 28px 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--soft); text-align: left; }
+.plan { margin: 0; color: var(--muted); font-weight: 700; }
+.price { margin: 4px 0 12px; font-size: 34px; font-weight: 800; }
+.card ul { padding-left: 20px; margin: 0 0 20px; }
+.card .button { display: block; text-align: center; }
+.small { color: var(--muted); font-size: 13px; }
+.faq { padding-bottom: 56px; }
+.faq details { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.faq summary { cursor: pointer; font-weight: 700; }
+.faq p { margin: 8px 0 0; color: var(--muted); }
+.foot { padding: 28px 0 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; text-align: center; }
+.foot p { margin: 4px 0; }

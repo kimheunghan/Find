@@ -1,0 +1,19 @@
+{
+  "name": "FindInside",
+  "owner": "kimheunghan",
+  "trialDays": 14,
+  "offlineGraceDays": 30,
+  "revalidateDays": 7,
+  "refundDays": 14,
+  "activationLimit": 2,
+  "price": "",
+  "supportEmail": "",
+  "website": "",
+  "downloadUrl": "",
+  "effectiveDate": "2026-10-01",
+  "lemonSqueezy": {
+    "storeId": null,
+    "productId": null,
+    "checkoutUrl": ""
+  }
+}

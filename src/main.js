@@ -73,7 +73,7 @@ function createApplicationMenu() {
             type: "info",
             title: "FindInside 정보",
             message: "FindInside",
-            detail: `버전 ${app.getVersion()}\n파일명, 폴더명과 경로를 빠르게 검색하는 PC 앱입니다.`
+            detail: aboutText()
           })
         }
       ]
@@ -108,6 +108,127 @@ async function saveSettings() {
   await fs.mkdir(app.getPath("userData"), { recursive: true });
   await fs.writeFile(settingsFile(), JSON.stringify(settings), "utf8");
 }
+
+function aboutText() {
+  return [
+    `버전 ${app.getVersion()}`,
+    "PC의 파일 이름·문서 내용·이미지 속 글자와 연결한 메일을 한 번에 검색합니다.",
+    "색인과 검색은 모두 이 PC 안에서 합니다.",
+    product.supportEmail ? `문의: ${product.supportEmail}` : "",
+    product.website || "",
+    "Copyright © 2026 kimheunghan"
+  ].filter(Boolean).join("\n");
+}
+
+// ---- 라이선스 (체험 기간 · Lemon Squeezy 키) ----
+// 상태는 Windows DPAPI(safeStorage)로 암호화해 두 곳(Roaming·Local)에 저장한다.
+// 한쪽을 지워도 다른 쪽의 첫 실행일을 쓰므로 파일 하나를 지워 체험 기간을 다시 받을 수 없다.
+const license = require("./license");
+const product = require("./product.json");
+let licenseState = null;
+
+function licenseFiles() {
+  return [
+    path.join(app.getPath("userData"), "findinside-license.dat"),
+    path.join(process.env.LOCALAPPDATA || app.getPath("userData"), "FindInside", "state.dat")
+  ];
+}
+
+async function readLicenseFile(file) {
+  try {
+    const raw = await fs.readFile(file);
+    const text = safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(raw) : raw.toString("utf8");
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function saveLicense() {
+  const text = JSON.stringify(licenseState);
+  const data = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(text) : Buffer.from(text, "utf8");
+  for (const file of licenseFiles()) {
+    try {
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, data);
+    } catch {
+      // 한 곳에 못 써도 다른 곳에 남는다
+    }
+  }
+}
+
+async function loadLicense() {
+  const saved = (await Promise.all(licenseFiles().map(readLicenseFile))).filter(Boolean);
+  // 정품 정보가 있는 쪽을 쓰고, 첫 실행일은 가장 이른 것·마지막 시각은 가장 늦은 것
+  const base = saved.find((item) => item.license) || saved[0] || license.newState();
+  licenseState = license.touch({
+    ...base,
+    firstRun: Math.min(...saved.map((item) => item.firstRun || Infinity), base.firstRun || Date.now()),
+    lastSeen: Math.max(...saved.map((item) => item.lastSeen || 0), base.lastSeen || 0)
+  });
+  await saveLicense();
+  if (license.status(licenseState).needsCheck || license.status(licenseState).kind === "offline") checkLicenseOnline();
+}
+
+async function checkLicenseOnline() {
+  try {
+    const result = await license.validate(licenseState);
+    if (!result.changed) return;
+    licenseState = result.state;
+    await saveLicense();
+    window?.webContents.send("license:changed", licenseInfo());
+  } catch {
+    // 다음 실행 때 다시 확인한다
+  }
+}
+
+function licenseInfo() {
+  licenseState = license.touch(licenseState);
+  return {
+    ...license.status(licenseState),
+    revoked: licenseState.revoked?.reason || "",
+    trialDays: product.trialDays,
+    canBuy: Boolean(product.lemonSqueezy.checkoutUrl),
+    supportEmail: product.supportEmail,
+    website: product.website
+  };
+}
+
+// 체험 기간이 끝났거나 오래 확인하지 못했으면 검색·색인·메일 가져오기를 막는다
+function requireLicense() {
+  if (!licenseState || license.status(license.touch(licenseState)).allowed) return;
+  const error = new Error("LICENSE_REQUIRED");
+  error.license = true;
+  throw error;
+}
+
+ipcMain.handle("license:status", () => licenseInfo());
+ipcMain.handle("license:activate", async (_, key) => {
+  licenseState = await license.activate(licenseState, key);
+  delete licenseState.revoked;
+  await saveLicense();
+  return licenseInfo();
+});
+ipcMain.handle("license:deactivate", async () => {
+  licenseState = await license.deactivate(licenseState);
+  await saveLicense();
+  return licenseInfo();
+});
+ipcMain.handle("license:check", async () => {
+  await checkLicenseOnline();
+  return licenseInfo();
+});
+ipcMain.handle("license:buy", () => product.lemonSqueezy.checkoutUrl && shell.openExternal(product.lemonSqueezy.checkoutUrl));
+
+// 이용약관·개인정보처리방침·오픈소스 라이선스 (앱에 함께 들어 있는 문서)
+const LEGAL_DOCS = { terms: "terms.html", privacy: "privacy.html", notices: "THIRD-PARTY-NOTICES.txt" };
+ipcMain.handle("legal:open", (_, name) => {
+  const file = LEGAL_DOCS[name];
+  if (!file) return;
+  const viewer = new BrowserWindow({ width: 820, height: 760, parent: window || undefined, title: "FindInside", icon: path.join(__dirname, "renderer", "icon.png"), autoHideMenuBar: true, webPreferences: { sandbox: true } });
+  viewer.setMenuBarVisibility(false);
+  viewer.loadFile(path.join(__dirname, "legal", file));
+});
 
 // ---- 검색 worker ----
 let searchWorker;
@@ -165,6 +286,7 @@ async function reloadIndex() {
 
 function createWindow() {
   window = new BrowserWindow({
+    icon: path.join(__dirname, "renderer", "icon.png"),
     width: 1180,
     height: 760,
     minWidth: 820,
@@ -184,7 +306,7 @@ function createWindow() {
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
   window.webContents.once("did-finish-load", () => {
     searchReady.then((loaded) => {
-      if (loaded.entryCount) runIndexing(() => refreshContent(loaded.targets)).catch(() => {});
+      if (loaded.entryCount && license.status(licenseState).allowed) runIndexing(() => refreshContent(loaded.targets)).catch(() => {});
     });
   });
 }
@@ -192,6 +314,7 @@ function createWindow() {
 app.whenReady().then(async () => {
   await fs.mkdir(app.getPath("userData"), { recursive: true });
   contentDb = openContentIndex(contentDbPath(), { migrate: false });
+  await loadLicense();
   const savedSettings = await loadSettings();
   if (savedSettings) settings = { roots: savedSettings.roots || [], excludedPaths: savedSettings.excludedPaths || [], mailAccounts: savedSettings.mailAccounts || [] };
   startSearchWorker();
@@ -329,6 +452,7 @@ let mailSyncing = null;
 
 // 모든 메일 계정에서 새 메일을 가져온다 (한 번에 하나씩)
 function syncMail() {
+  if (!license.status(license.touch(licenseState)).allowed) return Promise.resolve();
   mailSyncing ||= (async () => {
     for (const account of settings.mailAccounts) {
       try {
@@ -515,7 +639,10 @@ function indexContentInWorker({ documents: targets, images }) {
   });
 }
 
-ipcMain.handle("index:rebuild", () => runIndexing(rebuildIndex));
+ipcMain.handle("index:rebuild", () => {
+  requireLicense();
+  return runIndexing(rebuildIndex);
+});
 
 // 앱을 켤 때: 파일 목록은 저장된 것을 쓰고, 내용 색인만 이어서 만든다. 바뀌지 않은 파일은 건너뛴다.
 // ---- 폴더 감시: 새로 생기거나 바뀌거나 지워진 파일을 몇 초 안에 목록·내용 색인에 반영한다 (전체 재색인 없이) ----
@@ -651,6 +778,7 @@ async function rebuildIndex() {
 
 // 검색은 검색 worker가 한다 (메인 프로세스가 붙잡히면 한/영 전환 등 키 입력이 막힌다).
 ipcMain.handle("search:run", async (_, query, filters) => {
+  requireLicense();
   await searchReady;
   return askSearchWorker("search", { query, filters: filters || {} });
 });
@@ -674,7 +802,7 @@ ipcMain.handle("menu:action", (_, action) => {
       type: "info",
       title: "FindInside 정보",
       message: "FindInside",
-      detail: `버전 ${app.getVersion()}\n파일명, 폴더명과 경로를 빠르게 검색하는 PC 앱입니다.`
+      detail: aboutText()
     });
   }
 });

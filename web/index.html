@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FindInside — 기억나는 내용으로 파일과 메일을 찾는 PC 검색</title>
+<meta name="description" content="HWP·한글, 워드, 엑셀, PDF 문서 내용과 이미지 속 글자, 회사 메일과 첨부파일까지 내 PC 안에서 한 번에 검색합니다." />
+<link rel="icon" href="icon.png" />
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="#"><img src="icon.png" alt="" width="28" height="28" /> FindInside</a>
+    <nav><a href="#features">기능</a><a href="#privacy">보안</a><a href="#pricing">가격</a><a href="#faq">자주 묻는 질문</a></nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Windows PC용 · 한글(HWP) 지원</p>
+    <h1>파일 이름을 몰라도,<br />기억나는 내용으로 찾습니다.</h1>
+    <p class="sub">한글·워드·엑셀·PDF 문서 속 문장, 캡처 이미지 속 글자, 회사 메일과 첨부파일까지. 내 PC 안에서 한 번에 검색하고, 찾은 쪽·셀·슬라이드 위치까지 알려 줍니다.</p>
+    <div class="cta">
+      {{DOWNLOAD_BUTTON}}
+      {{BUY_BUTTON}}
+    </div>
+    <p class="note">{{TRIAL_DAYS}}일 동안 모든 기능 무료 체험 · 카드 등록 없이 설치</p>
+  </div>
+</section>
+
+<section id="features" class="wrap features">
+  <article>
+    <h3>문서 내용 검색</h3>
+    <p>HWP, HWPX, DOCX, XLSX, PPTX, PDF, TXT, CSV 안의 글자를 검색합니다. "12쪽", "Sheet1 B7", "슬라이드 3"처럼 어디에 있는지 바로 보여 주고, 누르면 문서가 열리고 찾을 문구가 복사됩니다.</p>
+  </article>
+  <article>
+    <h3>이미지 속 글자</h3>
+    <p>화면 캡처, 스캔한 서류, 사진 속 글자를 읽어 검색합니다. 작은 글씨, 세로쓰기, 한자 이름도 한글 음으로 찾을 수 있습니다.</p>
+  </article>
+  <article>
+    <h3>메일과 첨부파일</h3>
+    <p>회사 메일(IMAP·POP3)을 연결하면 제목, 보낸 사람, 본문은 물론 첨부된 한글·엑셀·PDF 문서 내용까지 검색합니다. 받은편지함·보낸 편지함별로 좁혀 볼 수 있습니다.</p>
+  </article>
+  <article>
+    <h3>빠르고 가볍게</h3>
+    <p>백만 개가 넘는 파일에서도 보통 1초 안팎으로 찾습니다. 새로 만든 파일과 바뀐 파일은 자동으로 반영하고, 최신순·관련도순으로 정렬할 수 있습니다.</p>
+  </article>
+</section>
+
+<section id="privacy" class="band">
+  <div class="wrap">
+    <h2>내 파일은 내 PC 밖으로 나가지 않습니다</h2>
+    <ul class="checks">
+      <li>색인과 검색은 모두 PC 안에서 합니다. 클라우드 업로드가 없습니다.</li>
+      <li>사용 통계·광고·자동 오류 전송이 없습니다.</li>
+      <li>메일 비밀번호는 Windows 데이터 보호(DPAPI)로 암호화해 이 PC에만 저장합니다.</li>
+      <li>파일을 읽기만 하고, 고치거나 지우지 않습니다. 메일도 서버에서 지우지 않습니다.</li>
+    </ul>
+    <p><a href="privacy.html">개인정보처리방침 보기</a></p>
+  </div>
+</section>
+
+<section id="pricing" class="wrap pricing">
+  <h2>가격</h2>
+  <div class="card">
+    <p class="plan">FindInside 라이선스</p>
+    <p class="price">{{PRICE}}</p>
+    <ul>
+      <li>한 번 구매로 계속 사용 (구독 아님)</li>
+      <li>PC {{ACTIVATION_LIMIT}}대에서 사용, 다른 PC로 옮기기 가능</li>
+      <li>1.x 버전 업데이트 무료</li>
+      <li>구매 후 {{REFUND_DAYS}}일 안에는 이유를 묻지 않고 전액 환불</li>
+    </ul>
+    {{BUY_BUTTON}}
+    <p class="small">결제와 세금 처리, 영수증 발행은 판매 대행사 Lemon Squeezy가 맡습니다.</p>
+  </div>
+</section>
+
+<section id="faq" class="wrap faq">
+  <h2>자주 묻는 질문</h2>
+  <details><summary>어떤 Windows에서 쓸 수 있나요?</summary><p>Windows 10, Windows 11 (64비트)에서 쓸 수 있습니다. 이미지 글자 읽기는 Windows에 들어 있는 한국어 OCR을 씁니다.</p></details>
+  <details><summary>처음 설치하면 바로 검색되나요?</summary><p>검색할 폴더를 고르고 "색인 시작"을 누르면 파일 목록은 몇 분 안에 만들어지고, 문서 내용과 이미지 글자는 뒤에서 차례로 읽습니다. 읽은 파일부터 바로 검색됩니다.</p></details>
+  <details><summary>회사 메일도 연결되나요?</summary><p>IMAP 또는 POP3를 지원하는 메일(메일플러그, 네이버, 다음, Gmail 등)을 연결할 수 있습니다. 서비스에 따라 앱 비밀번호가 필요합니다. Microsoft 365처럼 IMAP이 막힌 회사 메일은 지금은 연결할 수 없습니다.</p></details>
+  <details><summary>PC를 바꾸면 어떻게 하나요?</summary><p>쓰던 PC에서 도움말 → 라이선스 → "이 PC에서 해제"를 누른 뒤, 새 PC에서 같은 키를 입력하면 됩니다.</p></details>
+  <details><summary>환불은 어떻게 하나요?</summary><p>구매 후 {{REFUND_DAYS}}일 안에 구매 확인 메일의 링크나 아래 문의처로 요청하시면 전액 환불해 드립니다.</p></details>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <p><a href="terms.html">이용약관</a> · <a href="privacy.html">개인정보처리방침</a></p>
+    <p>{{CONTACT}}</p>
+    <p class="small">© 2026 {{OWNER}}. 판매 대행: Lemon Squeezy (Merchant of Record).</p>
+  </div>
+</footer>
+</body>
+</html>

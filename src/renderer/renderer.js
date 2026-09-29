@@ -28,7 +28,14 @@ let filters = { scopes: [], kind: "all", extensions: [] };
 const menuItems = {
   file: [{ label: "색인 시작", action: "reindex" }, { label: "종료", action: "quit" }],
   edit: [{ label: "검색어 전체 선택", action: "selectQuery" }, { label: "검색어 지우기", action: "clearQuery" }],
-  view: [{ label: "새로 고침", action: "reload" }, { label: "확대", action: "zoomIn" }, { label: "축소", action: "zoomOut" }, { label: "기본 크기", action: "resetZoom" }]
+  view: [{ label: "새로 고침", action: "reload" }, { label: "확대", action: "zoomIn" }, { label: "축소", action: "zoomOut" }, { label: "기본 크기", action: "resetZoom" }],
+  help: [
+    { label: "라이선스", action: "license" },
+    { label: "이용약관", action: "legal:terms" },
+    { label: "개인정보처리방침", action: "legal:privacy" },
+    { label: "오픈소스 라이선스", action: "legal:notices" },
+    { label: "FindInside 정보", action: "about" }
+  ]
 };
 
 function closeMenu() {
@@ -41,6 +48,8 @@ async function runMenuAction(action) {
   if (action === "reindex") document.querySelector("#reindex").click();
   else if (action === "selectQuery") { queryEl.focus(); queryEl.select(); }
   else if (action === "clearQuery") { queryEl.value = ""; queryEl.dispatchEvent(new Event("input")); queryEl.focus(); }
+  else if (action === "license") openLicenseDialog();
+  else if (action.startsWith("legal:")) await window.findInside.openLegal(action.slice(6));
   else await window.findInside.runMenuAction(action);
 }
 
@@ -63,7 +72,6 @@ document.querySelectorAll("[data-menu]").forEach((button) => {
   });
 });
 
-document.querySelector('[data-action="about"]').addEventListener("click", () => runMenuAction("about"));
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".appMenu")) closeMenu();
 });
@@ -400,6 +408,14 @@ async function runSearch() {
   if (sequence !== searchSequence) return;
   const { items, total } = result;
   // 검색이 실패하면 이전 화면을 그대로 두지 않고 이유와 다시 검색 버튼을 보여 준다.
+  // 체험 기간이 끝나 검색이 막히면 위의 라이선스 안내를 보여 준다
+  if (failed && /LICENSE_REQUIRED/.test(String(failed.message || failed))) {
+    renderResults([]);
+    resultsEl.querySelector(".empty").textContent = "라이선스가 필요합니다. 위 안내에서 라이선스 키를 입력하세요.";
+    resultsEl.dataset.query = query;
+    refreshLicense();
+    return;
+  }
   if (failed) {
     showSearchFailure(String(failed.message || failed).replace(/^Error invoking remote method '[^']+': (Error: )?/, ""));
     resultsEl.dataset.query = query;
@@ -462,6 +478,122 @@ function showSearchFailure(reason) {
   retry.addEventListener("click", runSearch);
   empty.append(document.createElement("br"), retry);
 }
+
+// ---- 라이선스 ----
+// 체험 중이면 남은 날짜를 위에 작게, 끝났으면 검색 대신 안내와 키 입력을 보여 준다. 정품이면 아무것도 보이지 않는다.
+let licenseInfo = null;
+const licenseDialog = document.querySelector("#licenseDialog");
+const licenseForm = document.querySelector("#licenseForm");
+const licenseMessage = document.querySelector("#licenseMessage");
+const ipcMessage = (error) => String(error.message || error).replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
+
+function licenseButton(text, className, onClick) {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.className = className;
+  element.textContent = text;
+  element.addEventListener("click", onClick);
+  return element;
+}
+
+function renderLicense() {
+  const info = licenseInfo;
+  const bar = document.querySelector("#licenseBar");
+  const gate = document.querySelector("#licenseGate");
+  bar.hidden = true;
+  gate.hidden = true;
+  if (!info) return;
+  const buy = () => window.findInside.buyLicense();
+  if (info.kind === "trial") {
+    const text = document.createElement("span");
+    text.textContent = `체험판 · ${info.daysLeft}일 남음 (체험 기간 ${info.trialDays}일 동안 모든 기능을 쓸 수 있습니다)`;
+    bar.className = `licenseBar${info.daysLeft <= 3 ? " warn" : ""}`;
+    bar.replaceChildren(text, ...(info.canBuy ? [licenseButton("구매하기", "primary", buy)] : []), licenseButton("라이선스 키 입력", "secondary", openLicenseDialog));
+    bar.hidden = false;
+  } else if (info.kind === "expired" || info.kind === "offline") {
+    const title = document.createElement("h3");
+    const text = document.createElement("p");
+    if (info.kind === "expired") {
+      title.textContent = "체험 기간이 끝났습니다";
+      text.textContent = `${info.revoked ? `${info.revoked} ` : ""}계속 쓰려면 라이선스를 구매한 뒤 받은 키를 입력하세요. 색인해 둔 파일과 메일은 그대로 남아 있어 키를 넣으면 바로 검색할 수 있습니다.`;
+    } else {
+      title.textContent = "라이선스를 확인해야 합니다";
+      text.textContent = `${info.offlineDays}일 동안 라이선스를 확인하지 못했습니다. 인터넷에 연결한 뒤 '다시 확인'을 누르세요.`;
+    }
+    const actions = document.createElement("div");
+    if (info.kind === "offline") actions.append(licenseButton("다시 확인", "primary", async () => { licenseInfo = await window.findInside.checkLicense(); renderLicense(); }));
+    else if (info.canBuy) actions.append(licenseButton("구매하기", "primary", buy));
+    actions.append(licenseButton("라이선스 키 입력", "secondary", openLicenseDialog));
+    gate.replaceChildren(title, text, actions);
+    gate.hidden = false;
+  }
+}
+
+async function refreshLicense() {
+  try {
+    licenseInfo = await window.findInside.licenseStatus();
+  } catch {
+    licenseInfo = null;
+  }
+  renderLicense();
+}
+
+function licenseSummaryText(info) {
+  if (!info) return "";
+  if (info.kind === "licensed") return `정품 사용 중${info.customer ? ` · ${info.customer}` : ""}${info.variant ? ` · ${info.variant}` : ""} · 키 ${info.keyHint}`;
+  if (info.kind === "trial") return `체험판 · ${info.daysLeft}일 남음`;
+  if (info.kind === "offline") return `정품 · ${info.offlineDays}일 동안 확인하지 못함 (인터넷 연결 필요)`;
+  return "체험 기간이 끝났습니다. 라이선스 키를 입력하세요.";
+}
+
+async function openLicenseDialog() {
+  await refreshLicense();
+  licenseForm.reset();
+  licenseMessage.textContent = "";
+  document.querySelector("#licenseSummary").textContent = licenseSummaryText(licenseInfo);
+  const licensed = licenseInfo?.kind === "licensed" || licenseInfo?.kind === "offline";
+  document.querySelector("#licenseDeactivate").hidden = !licensed;
+  document.querySelector("#licenseBuy").hidden = licensed || !licenseInfo?.canBuy;
+  licenseForm.elements.key.closest("label").hidden = licensed;
+  document.querySelector("#licenseActivate").hidden = licensed;
+  licenseDialog.showModal();
+  if (!licensed) licenseForm.elements.key.focus();
+}
+
+licenseForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = document.querySelector("#licenseActivate");
+  button.disabled = true;
+  licenseMessage.textContent = "확인하는 중…";
+  try {
+    licenseInfo = await window.findInside.activateLicense(licenseForm.elements.key.value);
+    licenseDialog.close();
+    renderLicense();
+    statusEl.textContent = "라이선스가 활성화되었습니다. 감사합니다!";
+    if (queryEl.value.trim()) runSearch();
+  } catch (error) {
+    licenseMessage.textContent = ipcMessage(error);
+  } finally {
+    button.disabled = false;
+  }
+});
+document.querySelector("#licenseClose").addEventListener("click", () => licenseDialog.close());
+document.querySelector("#licenseBuy").addEventListener("click", () => window.findInside.buyLicense());
+document.querySelector("#licenseDeactivate").addEventListener("click", async () => {
+  if (!await window.findInside.confirm("이 PC에서 라이선스를 해제할까요? 해제하면 다른 PC에서 같은 키를 쓸 수 있고, 이 PC에서는 다시 키를 넣어야 검색할 수 있습니다.")) return;
+  try {
+    licenseInfo = await window.findInside.deactivateLicense();
+    licenseDialog.close();
+    renderLicense();
+  } catch (error) {
+    licenseMessage.textContent = ipcMessage(error);
+  }
+});
+window.findInside.onLicenseChanged((info) => {
+  licenseInfo = info;
+  renderLicense();
+});
+refreshLicense();
 
 // ---- 정렬 (관련도순 · 최신순). 고른 값은 다음 실행에도 쓴다 ----
 const sortEl = document.querySelector("#sortOrder");

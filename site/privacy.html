@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FindInside 개인정보처리방침</title>
+<link rel="stylesheet" href="legal.css" />
+</head>
+<body>
+<main>
+<h1>FindInside 개인정보처리방침</h1>
+<p class="meta">시행일: 2026-10-01</p>
+
+<p class="lead">FindInside는 사용자의 파일, 문서, 이미지, 메일, 검색어를 개발자나 다른 곳으로 보내지 않습니다. 색인과 검색은 모두 사용자 PC 안에서 이루어집니다.</p>
+
+<h2>1. 개발자가 수집하는 정보</h2>
+<p>프로그램 사용 중 개발자가 받는 정보는 없습니다. 사용 통계, 광고, 오류 자동 전송 기능이 없습니다.</p>
+<p>구매할 때에는 판매 대행사 Lemon Squeezy가 결제에 필요한 정보(이름, 이메일, 결제 수단, 청구 국가 등)를 처리합니다. 이 정보는 <a href="https://www.lemonsqueezy.com/privacy">Lemon Squeezy 개인정보처리방침</a>에 따라 처리되며, 개발자는 판매 관리 화면에서 주문 내역(구매자 이름·이메일·주문 번호)을 볼 수 있습니다. 개발자는 이를 라이선스 확인, 환불, 문의 응대에만 씁니다.</p>
+
+<h2>2. 인터넷으로 보내는 정보</h2>
+<table>
+<tr><th>받는 곳</th><th>언제</th><th>보내는 정보</th></tr>
+<tr><td>Lemon Squeezy 라이선스 서버<br />(api.lemonsqueezy.com)</td><td>라이선스 키를 입력할 때, 이후 약 7일마다, "이 PC에서 해제"를 누를 때</td><td>라이선스 키, 이 설치를 구분하는 임의의 이름(예: "FindInside 1a2b3c4d"). PC 이름·사용자 이름·파일 정보는 보내지 않습니다.</td></tr>
+<tr><td>사용자가 직접 등록한 메일 서버<br />(IMAP·POP3)</td><td>메일 계정을 연결하거나 새 메일을 가져올 때(약 15분마다), 메일을 열 때</td><td>사용자가 입력한 아이디와 비밀번호(앱 비밀번호). 메일 서버에서 메일을 받아 오기만 하고, 메일을 지우거나 보내지 않습니다.</td></tr>
+</table>
+<p>인터넷 통신에서는 기술적으로 사용자의 IP 주소가 상대 서버에 전달됩니다.</p>
+
+<h2>3. 사용자 PC에 저장하는 정보</h2>
+<table>
+<tr><th>내용</th><th>위치</th></tr>
+<tr><td>파일 목록, 문서·이미지·메일에서 뽑은 글자(검색용 색인), 설정</td><td>%APPDATA%\findinside</td></tr>
+<tr><td>메일 계정 비밀번호 — Windows 데이터 보호(DPAPI)로 암호화해 이 PC의 이 Windows 사용자만 풀 수 있음</td><td>%APPDATA%\findinside\findinside-secrets.json</td></tr>
+<tr><td>라이선스·체험 기간 상태 — 암호화해 저장</td><td>%APPDATA%\findinside, %LOCALAPPDATA%\FindInside</td></tr>
+</table>
+<p>메일 원문은 저장하지 않고, 검색에 필요한 글자와 제목·보낸 사람·날짜 같은 목록 정보만 저장합니다. 메일을 열 때 메일 서버에서 다시 받습니다.</p>
+
+<h2>4. 제3자 제공과 처리 위탁</h2>
+<p>개발자는 사용자의 정보를 제3자에게 제공하지 않습니다. 결제와 라이선스 발급은 Lemon Squeezy(미국)가 처리합니다(국외 이전: 구매할 때 구매자가 Lemon Squeezy에 직접 입력하는 정보).</p>
+
+<h2>5. 보관 기간과 삭제</h2>
+<ul>
+<li>PC에 저장한 정보는 사용자가 지울 때까지 남습니다. 프로그램에서 메일 계정을 삭제하면 그 계정의 색인과 비밀번호도 지웁니다.</li>
+<li>모두 지우려면 프로그램을 제거한 뒤 위 표의 폴더를 삭제하세요.</li>
+<li>주문 정보는 관련 법령(전자상거래법 등)이 정한 기간 동안 Lemon Squeezy가 보관합니다. 삭제를 원하면 아래 문의처로 요청하세요.</li>
+</ul>
+
+<h2>6. 사용자의 권리</h2>
+<p>사용자는 개발자가 가진 자신의 주문 정보에 대해 열람, 정정, 삭제, 처리 정지를 요청할 수 있습니다. 아래 문의처로 요청하면 지체 없이 처리합니다.</p>
+
+<h2>7. 개인정보 보호책임자와 문의</h2>
+<p>개인정보 보호책임자: kimheunghan<br />문의: 준비 중</p>
+<p>개인정보 침해 신고·상담: 개인정보침해신고센터(privacy.kisa.or.kr, 국번 없이 118), 개인정보분쟁조정위원회(kopico.go.kr, 1833-6972)</p>
+
+<h2>8. 변경</h2>
+<p>이 방침을 바꾸면 시행일 7일 전부터 판매 페이지에 알립니다.</p>
+</main>
+</body>
+</html>

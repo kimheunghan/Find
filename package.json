@@ -1,7 +1,7 @@
 {
   "name": "findinside",
-  "version": "0.1.0",
-  "description": "FindInside Windows PC search application",
+  "version": "1.0.0",
+  "description": "내 PC의 파일 이름·문서 내용·이미지 속 글자와 메일을 한 번에 검색하는 Windows 앱",
   "main": "src/main.js",
   "type": "commonjs",
   "scripts": {
@@ -10,7 +10,9 @@
     "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js && node --check src/tokens.js && node --check src/hanja.js && node --check src/ocrLoose.js && node --check src/mail.js && node --check src/imap.js && node --check src/mailWorker.js && node --check src/extract.js && node --check src/ocr.js && node --check src/contentIndex.js && node --check src/contentWorker.js && node --check src/searchWorker.js && node --check src/renderer/highlight.js && node --check src/renderer/renderer.js",
     "setup:ocr": "powershell -ExecutionPolicy Bypass -File scripts/setup-ocr.ps1",
     "qa:ocr": "node scripts/qa-ocr.js",
-    "dist": "node scripts/dist.js"
+    "dist": "node scripts/dist.js",
+    "docs": "node scripts/build-docs.js",
+    "icon": "electron scripts/make-icon.js"
   },
   "devDependencies": {
     "electron": "^38.1.2",
@@ -47,7 +49,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -60,7 +63,9 @@
       "installerLanguages": [
         "ko_KR"
       ],
-      "language": "1042"
+      "language": "1042",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     }
   }
 }
