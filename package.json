@@ -73,8 +73,7 @@
       "displayName": "FindInside",
       "backgroundColor": "transparent",
       "languages": [
-        "ko-KR",
-        "en-US"
+        "ko-KR"
       ],
       "showNameOnTiles": false
     }
