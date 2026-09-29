@@ -35,7 +35,10 @@ const values = {
   PRICE: escape(product.price || "가격 준비 중"),
   CONTACT: email ? `문의: <a href="mailto:${escape(email)}">${escape(email)}</a>` : "문의: 준비 중",
   BUY_BUTTON: checkout ? `<a class="button primary" href="${escape(checkout)}">구매하기</a>` : "",
-  DOWNLOAD_BUTTON: download ? `<a class="button ghost" href="${escape(download)}">무료 체험판 받기</a>` : ""
+  BUY_BUTTON_GHOST: checkout ? `<a class="button ghost" href="${escape(checkout)}">구매하기 ₩${escape(String(product.price || "").replace(/^₩/, ""))}</a>` : "",
+  DOWNLOAD_BUTTON: download ? `<a class="button primary" href="${escape(download)}">무료 체험판 내려받기</a>` : "",
+  DOWNLOAD_LINK: download ? escape(download) : "#",
+  CHECKOUT_LINK: checkout ? escape(checkout) : "#pricing"
 };
 const fill = (text) => text.replace(/\{\{([A-Z_]+)\}\}/g, (all, key) => {
   if (!(key in values)) throw new Error(`알 수 없는 값: ${all}`);

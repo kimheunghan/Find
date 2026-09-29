@@ -12,7 +12,7 @@
 <header class="top">
   <div class="wrap nav">
     <a class="brand" href="#"><img src="icon.png" alt="" width="30" height="30" /> FindInside</a>
-    <nav><a href="#compare">무엇이 다른가요</a><a href="#features">기능</a><a href="#pricing">가격</a><a href="#faq">자주 묻는 질문</a></nav>
+    <nav><a href="#compare">무엇이 다른가요</a><a href="#features">기능</a><a href="#howto">사용 방법</a><a href="#pricing">가격</a><a href="#faq">자주 묻는 질문</a></nav>
   </div>
 </header>
 
@@ -25,9 +25,9 @@
       <p class="sub">파일 이름이 기억나지 않아도 괜찮습니다. 한글·엑셀·PDF 문서 <strong>안에 적힌 글자</strong>, 캡처 이미지 속 글자, 회사 메일과 첨부파일까지 검색해서 <strong>몇 쪽, 어느 셀</strong>에 있는지 바로 보여 줍니다.</p>
       <div class="cta">
         {{DOWNLOAD_BUTTON}}
-        {{BUY_BUTTON}}
+        {{BUY_BUTTON_GHOST}}
       </div>
-      <p class="note">{{TRIAL_DAYS}}일 무료 체험 · 카드 등록 없음 · 파일은 내 PC 밖으로 나가지 않음</p>
+      <p class="note">Windows 10·11 · {{TRIAL_DAYS}}일 무료 체험 · 카드 등록 없음 · 파일은 내 PC 밖으로 나가지 않음</p>
     </div>
 
     <div class="demo" aria-label="FindInside 검색 화면 예시">
@@ -115,14 +115,44 @@
   </div>
 </section>
 
-<section class="section alt">
+<section id="howto" class="section alt">
   <div class="wrap">
-    <h2>쓰는 방법은 세 단계</h2>
-    <ol class="steps">
-      <li><b>설치하고 폴더 고르기</b><span>검색할 드라이브나 폴더를 고르고 "색인 시작"을 누릅니다.</span></li>
-      <li><b>기다리지 않고 바로 검색</b><span>파일 목록은 몇 분이면 만들어지고, 문서와 이미지 내용은 뒤에서 읽는 대로 검색에 반영됩니다.</span></li>
-      <li><b>기억나는 말로 찾기</b><span>문장 일부, 숫자, 사람 이름 무엇이든 입력하면 문서·이미지·메일에서 함께 찾아 줍니다.</span></li>
+    <h2>사용 방법 — 내려받기부터 구매까지</h2>
+    <p class="lead">먼저 14일 동안 무료로 써 보고, 마음에 들면 구매해서 라이선스 키를 넣으면 됩니다.</p>
+    <ol class="journey">
+      <li>
+        <b>체험판 내려받기·설치</b>
+        <span><a href="{{DOWNLOAD_LINK}}">Find_Setup.exe</a>를 받아 실행합니다. Windows가 "PC를 보호했습니다" 창을 띄우면 <em>추가 정보 → 실행</em>을 누르세요.</span>
+      </li>
+      <li>
+        <b>폴더 고르고 색인 시작</b>
+        <span>왼쪽 "검색 위치"에 찾을 드라이브나 폴더를 넣고 <em>색인 시작</em>을 누릅니다. 메일은 "메일 계정 추가"로 연결합니다.</span>
+      </li>
+      <li>
+        <b>{{TRIAL_DAYS}}일 무료로 사용</b>
+        <span>모든 기능을 그대로 씁니다. 화면 위에 "체험판 · N일 남음"이 보입니다.</span>
+      </li>
+      <li>
+        <b>구매하기</b>
+        <span>앱의 <em>구매하기</em> 버튼이나 <a href="{{CHECKOUT_LINK}}">이 페이지의 구매 버튼</a>을 누르면 결제 페이지가 열립니다. 카드 또는 PayPal로 결제합니다.</span>
+      </li>
+      <li>
+        <b>라이선스 키 받기</b>
+        <span>결제 완료 화면과 구매 확인 메일에 <em>라이선스 키</em>(예: A1B2C3D4-E5F6-…)가 나옵니다.</span>
+      </li>
+      <li>
+        <b>앱에 키 넣기</b>
+        <span>앱 위쪽의 <em>라이선스 키 입력</em>(또는 메뉴 <em>도움말 → 라이선스</em>)을 눌러 키를 붙여 넣고 <em>활성화</em>를 누르면 끝입니다. 체험 때 만든 색인은 그대로 이어서 씁니다.</span>
+      </li>
     </ol>
+    <figure class="keybox" aria-label="라이선스 키 입력 화면 예시">
+      <div class="kb-title">FindInside 라이선스</div>
+      <div class="kb-sub">체험판 · 3일 남음</div>
+      <div class="kb-label">라이선스 키</div>
+      <div class="kb-input">A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D<span class="caret"></span></div>
+      <div class="kb-buttons"><span class="kb-btn">구매하기</span><span class="kb-btn">닫기</span><span class="kb-btn on">활성화</span></div>
+      <figcaption>앱의 라이선스 창 — 메일로 받은 키를 붙여 넣고 활성화</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -166,6 +196,9 @@
     <details><summary>처음 설치하면 바로 검색되나요?</summary><p>검색할 폴더를 고르고 "색인 시작"을 누르면 파일 이름은 몇 분 안에 검색됩니다. 문서 내용과 이미지 글자는 뒤에서 차례로 읽고, 읽은 파일부터 바로 검색됩니다.</p></details>
     <details><summary>회사 메일도 연결되나요?</summary><p>IMAP 또는 POP3를 지원하는 메일(메일플러그, 네이버, 다음, Gmail 등)을 연결할 수 있습니다. 서비스에 따라 앱 비밀번호가 필요합니다. Microsoft 365처럼 IMAP이 막힌 회사 메일은 지금은 연결할 수 없습니다.</p></details>
     <details><summary>PC가 느려지지 않나요?</summary><p>내용 읽기는 낮은 우선순위로 뒤에서 하고, 한 번 읽은 파일은 바뀌지 않는 한 다시 읽지 않습니다.</p></details>
+    <details><summary>라이선스 키는 어디에 넣나요?</summary><p>앱 위쪽의 "라이선스 키 입력" 버튼(체험 기간이 끝났으면 가운데 안내의 버튼)을 누르거나, 메뉴 도움말 → 라이선스를 엽니다. 구매 확인 메일의 키를 붙여 넣고 활성화를 누르세요. 인터넷이 연결되어 있어야 합니다.</p></details>
+    <details><summary>설치할 때 "PC를 보호했습니다" 창이 떠요.</summary><p>새로 나온 프로그램이라 Windows가 한 번 확인하는 창입니다. "추가 정보"를 누른 뒤 "실행"을 누르면 설치됩니다.</p></details>
+    <details><summary>체험 기간이 끝나면 색인한 자료가 지워지나요?</summary><p>아니요. 색인은 그대로 남아 있고, 라이선스 키를 넣으면 바로 다시 검색할 수 있습니다.</p></details>
     <details><summary>PC를 바꾸면 어떻게 하나요?</summary><p>쓰던 PC에서 도움말 → 라이선스 → "이 PC에서 해제"를 누른 뒤, 새 PC에서 같은 키를 입력하면 됩니다.</p></details>
     <details><summary>환불은 어떻게 하나요?</summary><p>구매 후 {{REFUND_DAYS}}일 안에 구매 확인 메일의 링크나 아래 문의처로 요청하시면 전액 환불해 드립니다.</p></details>
   </div>

@@ -139,3 +139,24 @@ a { color: var(--accent); }
   .features { grid-template-columns: 1fr; }
   .sub { font-size: 16px; }
 }
+
+/* 사용 방법 */
+#howto .wrap { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px 48px; align-items: start; }
+#howto h2, #howto .lead { grid-column: 1 / -1; }
+.journey { margin: 0; padding: 0; list-style: none; counter-reset: j; }
+.journey li { counter-increment: j; position: relative; padding: 0 0 22px 52px; }
+.journey li::before { content: counter(j); position: absolute; left: 0; top: 0; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-weight: 800; }
+.journey li:not(:last-child)::after { content: ""; position: absolute; left: 16px; top: 38px; bottom: 4px; width: 2px; background: var(--line); }
+.journey b { display: block; font-size: 17px; margin-bottom: 2px; }
+.journey span { color: var(--muted); font-size: 15px; }
+.journey em { font-style: normal; font-weight: 700; color: var(--text); }
+.keybox { position: sticky; top: 84px; margin: 0; padding: 22px; border-radius: 16px; background: #111827; color: #eef2ff; border: 1px solid #2c3854; box-shadow: 0 20px 50px rgba(20,30,70,.18); font-size: 14px; }
+.kb-title { font-weight: 800; font-size: 16px; }
+.kb-sub { margin: 4px 0 14px; color: #c3cdf0; }
+.kb-label { color: #aeb8ce; font-size: 13px; margin-bottom: 4px; }
+.kb-input { display: flex; align-items: center; gap: 2px; padding: 9px 10px; border: 1px solid #5b7cfa; border-radius: 7px; background: #0d1321; font-family: Consolas, monospace; font-size: 13px; overflow: hidden; white-space: nowrap; }
+.kb-buttons { display: flex; justify-content: flex-end; gap: 6px; margin-top: 16px; }
+.kb-btn { padding: 7px 12px; border-radius: 8px; background: #1a2235; color: #cdd6ea; font-size: 13px; }
+.kb-btn.on { background: #5b7cfa; color: #fff; font-weight: 700; box-shadow: 0 0 0 3px rgba(91,124,250,.35); }
+.keybox figcaption { margin-top: 14px; color: #8e9bbb; font-size: 12px; text-align: center; }
+@media (max-width: 900px) { #howto .wrap { grid-template-columns: 1fr; } .keybox { position: static; } }
