@@ -12,7 +12,8 @@
     "qa:ocr": "node scripts/qa-ocr.js",
     "dist": "node scripts/dist.js",
     "docs": "node scripts/build-docs.js",
-    "icon": "electron scripts/make-icon.js"
+    "icon": "electron scripts/make-icon.js",
+    "dist:store": "node scripts/dist-store.js"
   },
   "devDependencies": {
     "electron": "^38.1.2",
@@ -66,6 +67,16 @@
       "language": "1042",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
+    },
+    "appx": {
+      "applicationId": "FindInside",
+      "displayName": "FindInside",
+      "backgroundColor": "transparent",
+      "languages": [
+        "ko-KR",
+        "en-US"
+      ],
+      "showNameOnTiles": false
     }
   }
 }

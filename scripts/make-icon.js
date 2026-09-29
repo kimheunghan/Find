@@ -28,14 +28,29 @@ const svg = (size) => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" h
 </svg>`;
 
 // 512px로 한 번 그린 뒤 크기별로 줄인다 (작은 창을 여러 번 띄우면 불러오기가 실패한다)
+// 창을 새로 여러 번 만들면 두 번째부터 불러오기가 실패하므로 창 하나를 계속 쓴다
+let sharedWindow;
 async function renderBase() {
   const size = 512;
-  const win = new BrowserWindow({ width: size, height: size, show: false, frame: false, transparent: true, webPreferences: { offscreen: true } });
+  const win = sharedWindow = new BrowserWindow({ width: size, height: size, show: false, frame: false, transparent: true, webPreferences: { offscreen: true } });
   await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<html><body style="margin:0;background:transparent;overflow:hidden">${svg(size)}</body></html>`)}`);
   await new Promise((resolve) => setTimeout(resolve, 300));
   const image = await win.webContents.capturePage({ x: 0, y: 0, width: size, height: size });
-  win.destroy();
   return image;
+}
+
+// 넓은 타일: 투명 바탕 가운데에 아이콘 (창 크기가 화면에 묶이지 않게 개발자 도구 프로토콜로 크기 고정)
+async function renderWide(width, height) {
+  const icon = Math.round(height * 0.8);
+  const win = sharedWindow;
+  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<html><body style="margin:0;background:transparent;overflow:hidden;display:grid;place-items:center;width:${width}px;height:${height}px">${svg(icon)}</body></html>`)}`);
+  const cdp = win.webContents.debugger;
+  if (!cdp.isAttached()) cdp.attach("1.3");
+  await cdp.sendCommand("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+  await cdp.sendCommand("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const { data } = await cdp.sendCommand("Page.captureScreenshot", { format: "png", clip: { x: 0, y: 0, width, height, scale: 1 } });
+  return Buffer.from(data, "base64");
 }
 
 // ICO: 헤더 + 크기별 항목 + PNG 데이터 (Windows Vista 이후 PNG 항목을 지원)
@@ -74,5 +89,20 @@ app.whenReady().then(async () => {
   fs.mkdirSync(path.join(root, "web"), { recursive: true });
   fs.writeFileSync(path.join(root, "web", "icon.png"), pngs.find((item) => item.size === 256).data);
   console.log("아이콘:", SIZES.join(", "), "px → build/icon.ico, build/icon.png, src/renderer/icon.png, web/icon.png");
+
+  // Microsoft Store(MSIX) 타일·로고: build/appx/ (electron-builder가 패키지의 assets로 넣는다)
+  // 기본 크기와 고해상도 화면용 2배(scale-200)를 함께 만든다. 넓은 타일은 투명 바탕 가운데에 아이콘.
+  const appxDir = path.join(root, "build", "appx");
+  fs.mkdirSync(appxDir, { recursive: true });
+  const squares = { StoreLogo: 50, Square44x44Logo: 44, Square150x150Logo: 150 };
+  for (const [name, size] of Object.entries(squares)) {
+    fs.writeFileSync(path.join(appxDir, `${name}.png`), base.resize({ width: size, height: size, quality: "best" }).toPNG());
+    fs.writeFileSync(path.join(appxDir, `${name}.scale-200.png`), base.resize({ width: size * 2, height: size * 2, quality: "best" }).toPNG());
+  }
+  for (const scale of [1, 2]) {
+    const wide = await renderWide(310 * scale, 150 * scale);
+    fs.writeFileSync(path.join(appxDir, scale === 1 ? "Wide310x150Logo.png" : "Wide310x150Logo.scale-200.png"), wide);
+  }
+  console.log("스토어 타일:", fs.readdirSync(appxDir).join(", "));
   app.quit();
 });
