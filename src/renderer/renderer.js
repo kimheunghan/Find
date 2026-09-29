@@ -540,7 +540,7 @@ async function refreshLicense() {
 
 function licenseSummaryText(info) {
   if (!info) return "";
-  if (info.kind === "licensed") return `정품 사용 중${info.customer ? ` · ${info.customer}` : ""}${info.variant ? ` · ${info.variant}` : ""} · 키 ${info.keyHint}`;
+  if (info.kind === "licensed") return `정품 사용 중${info.customer ? ` · ${info.customer}` : ""}${info.variant && info.variant !== "Default" ? ` · ${info.variant}` : ""} · 키 ${info.keyHint}`;
   if (info.kind === "trial") return `체험판 · ${info.daysLeft}일 남음`;
   if (info.kind === "offline") return `정품 · ${info.offlineDays}일 동안 확인하지 못함 (인터넷 연결 필요)`;
   return "체험 기간이 끝났습니다. 라이선스 키를 입력하세요.";
