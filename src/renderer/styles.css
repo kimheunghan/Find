@@ -15,8 +15,8 @@ button, input { font: inherit; }
 .brand img { width: 34px; height: 34px; margin-right: 10px; }
 .tagline { color: #919bb3; font-size: 13px; margin: 12px 0 36px; }
 h2 { font-size: 13px; color: #aeb8ce; margin: 0 0 12px; }
-.roots { display: grid; gap: 8px; margin-bottom: 12px; }
-.root { display: flex; align-items: center; gap: 6px; padding: 10px; border-radius: 8px; background: #151c2d; color: #c9d2e7; font-size: 12px; }
+.roots { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 12px; }
+.root { display: flex; min-width: 0; align-items: center; gap: 6px; padding: 10px; border-radius: 8px; background: #151c2d; color: #c9d2e7; font-size: 12px; }
 .root span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .remove { flex: none; border: 0; padding: 0 4px; color: #78849d; background: transparent; cursor: pointer; font-size: 14px; }
 .remove:hover { color: #f4f6ff; }
