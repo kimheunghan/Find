@@ -164,6 +164,26 @@ function renderHighlighted(element, value, terms) {
   element.replaceChildren(...nodes);
 }
 
+// 결과 줄 앞의 형식 표시: 글자(확장자)와 색깔 종류
+const BADGE_KINDS = {
+  hwp: ["hwp", "hwpx"],
+  word: ["doc", "docx", "rtf", "odt"],
+  sheet: ["xls", "xlsx", "csv", "ods"],
+  slide: ["ppt", "pptx", "odp"],
+  pdf: ["pdf"],
+  image: ["png", "jpg", "jpeg", "gif", "bmp", "webp", "tif", "tiff"],
+  mailfile: ["eml", "msg"],
+  text: ["txt", "md", "log"]
+};
+function fileBadge(item) {
+  if (item.kind === "mail") return { text: "메일", kind: "mail", title: "메일" };
+  if (item.kind === "folder") return { text: "폴더", kind: "folder", title: "폴더" };
+  const extension = String(item.extension || "").toLowerCase();
+  const kind = Object.keys(BADGE_KINDS).find((key) => BADGE_KINDS[key].includes(extension)) || "other";
+  const text = extension ? extension.toUpperCase().slice(0, 4) : "파일";
+  return { text, kind, title: extension ? `${extension.toUpperCase()} 파일` : "파일" };
+}
+
 function renderResults(items, total = items.length) {
   resultsEl.replaceChildren();
   countEl.textContent = total.toLocaleString();
@@ -185,7 +205,12 @@ function renderResults(items, total = items.length) {
   for (const item of items) {
     const row = template.content.firstElementChild.cloneNode(true);
     const isMail = item.kind === "mail";
-    row.querySelector(".icon").textContent = isMail ? "✉" : item.kind === "folder" ? "▰" : "▤";
+    // 파일 형식을 색깔 있는 표시로 (한글은 파랑, 엑셀은 초록처럼 한눈에 구분)
+    const badge = fileBadge(item);
+    const icon = row.querySelector(".icon");
+    icon.textContent = badge.text;
+    icon.dataset.kind = badge.kind;
+    icon.title = badge.title;
     renderHighlighted(row.querySelector(".name"), item.name, terms);
     renderHighlighted(row.querySelector(".path"), isMail ? mailSummary(item) : item.path, terms);
     row.querySelector(".type").textContent = [
