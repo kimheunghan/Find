@@ -26,9 +26,13 @@
       <p class="sub">파일 이름이 기억나지 않아도 괜찮습니다. 한글·엑셀·PDF 문서 <strong>안에 적힌 글자</strong>, 캡처 이미지 속 글자, 회사 메일과 첨부파일까지 검색해서 <strong>몇 쪽, 어느 셀</strong>에 있는지 바로 보여 줍니다.</p>
       <div class="cta">
         <div class="store-cta">{{STORE_BADGE}}<noscript>{{DOWNLOAD_BUTTON}}</noscript></div>
+        <div class="pc-only" hidden>
+          <p><b>FindInside는 Windows PC용 프로그램입니다.</b><br />휴대폰에는 설치할 수 없어요. PC에서 이 페이지를 열어 설치하세요.</p>
+          <button type="button" class="button primary copy-link">PC로 보낼 링크 복사</button>
+        </div>
         {{BUY_BUTTON_GHOST}}
       </div>
-      <p class="note">Windows 10·11 · {{TRIAL_DAYS}}일 무료 체험 · 카드 등록 없음 · 파일은 내 PC 밖으로 나가지 않음<br /><a class="alt-download" href="{{STORE_LINK}}">스토어 웹 페이지에서 보기</a> · <a class="alt-download" href="{{DOWNLOAD_LINK}}">스토어를 쓸 수 없나요? 설치 파일(.exe) 직접 받기</a></p>
+      <p class="note">Windows 10·11 · {{TRIAL_DAYS}}일 무료 체험 · 카드 등록 없음 · 파일은 내 PC 밖으로 나가지 않음<br /><span class="alt-download-row"><a class="alt-download" href="{{STORE_LINK}}">스토어 웹 페이지에서 보기</a> · <a class="alt-download" href="{{DOWNLOAD_LINK}}">스토어를 쓸 수 없나요? 설치 파일(.exe) 직접 받기</a></span></p>
     </div>
 
     <div class="demo" aria-label="FindInside 검색 화면 예시">
@@ -213,5 +217,24 @@
     <p class="small">© 2026 {{OWNER}}. 판매 대행: Lemon Squeezy (Merchant of Record).</p>
   </div>
 </footer>
+<script>
+// 휴대폰·태블릿(Windows가 아님)으로 들어오면 스토어 배지 대신 "PC에서 설치하세요" 안내를 보여 준다.
+// 스토어 웹 페이지는 휴대폰에서 무겁고, 받아도 설치할 수 없기 때문이다.
+(function () {
+  var ua = navigator.userAgent || "";
+  var isWindowsPc = /Windows NT/.test(ua) && !/Windows Phone/.test(ua);
+  if (isWindowsPc) return;
+  document.querySelectorAll(".store-cta, .alt-download-row").forEach(function (el) { el.hidden = true; el.style.display = "none"; });
+  document.querySelectorAll(".pc-only").forEach(function (el) { el.hidden = false; });
+  document.querySelectorAll(".copy-link").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var url = location.origin + location.pathname;
+      var done = function () { button.textContent = "복사했어요 · 카톡 '나와의 채팅' 등으로 PC에 보내세요"; };
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () { prompt("아래 주소를 복사하세요", url); });
+      else prompt("아래 주소를 복사하세요", url);
+    });
+  });
+})();
+</script>
 </body>
 </html>
