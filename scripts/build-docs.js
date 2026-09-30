@@ -38,8 +38,6 @@ const values = {
   BUY_BUTTON_GHOST: checkout ? `<a class="button ghost" href="${escape(checkout)}">구매하기 ₩${escape(String(product.price || "").replace(/^₩/, ""))}</a>` : "",
   // 체험판은 Microsoft Store가 기본 (스토어가 서명해 Windows·백신 경고가 없다). 설치 파일 직접 받기는 보조 링크
   DOWNLOAD_BUTTON: product.storeUrl ? `<a class="button primary" href="${escape(product.storeUrl)}">Microsoft Store에서 무료 체험</a>` : download ? `<a class="button primary" href="${escape(download)}">무료 체험판 내려받기</a>` : "",
-  // Microsoft 공식 스토어 배지: 누르면 무거운 웹 페이지를 거치지 않고 PC의 스토어 앱이 설치 창으로 바로 열린다 (window-mode="direct")
-  STORE_BADGE: product.storeUrl ? `<ms-store-badge productid="${escape(product.storeUrl.split("/").pop())}" productname="FindInside" window-mode="direct" theme="dark" size="small" language="ko" animation="off"></ms-store-badge>` : "",
   STORE_LINK: product.storeUrl ? escape(product.storeUrl) : (download ? escape(download) : "#"),
   DOWNLOAD_LINK: download ? escape(download) : "#",
   CHECKOUT_LINK: checkout ? escape(checkout) : "#pricing"
