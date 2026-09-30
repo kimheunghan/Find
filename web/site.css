@@ -160,3 +160,6 @@ a { color: var(--accent); }
 .kb-btn.on { background: #5b7cfa; color: #fff; font-weight: 700; box-shadow: 0 0 0 3px rgba(91,124,250,.35); }
 .keybox figcaption { margin-top: 14px; color: #8e9bbb; font-size: 12px; text-align: center; }
 @media (max-width: 900px) { #howto .wrap { grid-template-columns: 1fr; } .keybox { position: static; } }
+
+.alt-download { display: inline-block; margin-top: 8px; color: var(--hero-muted); font-size: 13px; }
+.alt-download:hover { color: #fff; }

@@ -27,7 +27,7 @@
         {{DOWNLOAD_BUTTON}}
         {{BUY_BUTTON_GHOST}}
       </div>
-      <p class="note">Windows 10·11 · {{TRIAL_DAYS}}일 무료 체험 · 카드 등록 없음 · 파일은 내 PC 밖으로 나가지 않음</p>
+      <p class="note">Windows 10·11 · {{TRIAL_DAYS}}일 무료 체험 · 카드 등록 없음 · 파일은 내 PC 밖으로 나가지 않음<br /><a class="alt-download" href="{{DOWNLOAD_LINK}}">Microsoft Store를 쓸 수 없나요? 설치 파일(.exe) 직접 받기</a></p>
     </div>
 
     <div class="demo" aria-label="FindInside 검색 화면 예시">
@@ -121,8 +121,8 @@
     <p class="lead">먼저 14일 동안 무료로 써 보고, 마음에 들면 구매해서 라이선스 키를 넣으면 됩니다.</p>
     <ol class="journey">
       <li>
-        <b>체험판 내려받기·설치</b>
-        <span><a href="{{DOWNLOAD_LINK}}">Find_Setup.exe</a>를 받아 실행합니다. 새 프로그램이라 경고가 뜰 수 있습니다. Edge에서 "일반적으로 다운로드되지 않습니다"가 뜨면 <em>⋯ → 유지 → 그래도 계속</em>, 실행할 때 "PC를 보호했습니다"가 뜨면 <em>추가 정보 → 실행</em>을 누르세요.</span>
+        <b>체험판 설치</b>
+        <span><a href="{{STORE_LINK}}">Microsoft Store</a>에서 <em>받기</em>를 누르면 설치됩니다. 스토어를 쓸 수 없으면 <a href="{{DOWNLOAD_LINK}}">Find_Setup.exe</a>를 받아 실행합니다. 새 프로그램이라 경고가 뜰 수 있습니다. Edge에서 "일반적으로 다운로드되지 않습니다"가 뜨면 <em>⋯ → 유지 → 그래도 계속</em>, 실행할 때 "PC를 보호했습니다"가 뜨면 <em>추가 정보 → 실행</em>을 누르세요.</span>
       </li>
       <li>
         <b>폴더 고르고 색인 시작</b>
@@ -197,8 +197,9 @@
     <details><summary>회사 메일도 연결되나요?</summary><p>IMAP 또는 POP3를 지원하는 메일(메일플러그, 네이버, 다음, Gmail 등)을 연결할 수 있습니다. 서비스에 따라 앱 비밀번호가 필요합니다. Microsoft 365처럼 IMAP이 막힌 회사 메일은 지금은 연결할 수 없습니다.</p></details>
     <details><summary>PC가 느려지지 않나요?</summary><p>내용 읽기는 낮은 우선순위로 뒤에서 하고, 한 번 읽은 파일은 바뀌지 않는 한 다시 읽지 않습니다.</p></details>
     <details><summary>라이선스 키는 어디에 넣나요?</summary><p>앱 위쪽의 "라이선스 키 입력" 버튼(체험 기간이 끝났으면 가운데 안내의 버튼)을 누르거나, 메뉴 도움말 → 라이선스를 엽니다. 구매 확인 메일의 키를 붙여 넣고 활성화를 누르세요. 인터넷이 연결되어 있어야 합니다.</p></details>
-    <details><summary>내려받거나 설치할 때 경고가 떠요.</summary><p>새로 나온 프로그램이라 Windows와 브라우저가 한 번 확인하는 창입니다. Edge에서 "Find_Setup.exe은(는) 일반적으로 다운로드되지 않습니다"가 뜨면 오른쪽 ⋯ → 유지 → 그래도 계속을 누르세요. 설치 파일을 실행할 때 "Windows의 PC 보호"(PC를 보호했습니다) 창이 뜨면 추가 정보 → 실행을 누르면 설치됩니다.</p></details>
+    <details><summary>설치 파일(.exe)을 받을 때 경고가 떠요.</summary><p>Microsoft Store에서 받으면 경고 없이 설치됩니다. 설치 파일을 직접 받으면 새로 나온 프로그램이라 Windows와 브라우저가 한 번 확인하는 창입니다. Edge에서 "Find_Setup.exe은(는) 일반적으로 다운로드되지 않습니다"가 뜨면 오른쪽 ⋯ → 유지 → 그래도 계속을 누르세요. 설치 파일을 실행할 때 "Windows의 PC 보호"(PC를 보호했습니다) 창이 뜨면 추가 정보 → 실행을 누르면 설치됩니다.</p></details>
     <details><summary>체험 기간이 끝나면 색인한 자료가 지워지나요?</summary><p>아니요. 색인은 그대로 남아 있고, 라이선스 키를 넣으면 바로 다시 검색할 수 있습니다.</p></details>
+    <details><summary>V3에서 "앱 격리 검사"가 떠요.</summary><p>설치 파일(.exe)을 직접 받으면 백신이 새 프로그램을 먼저 검사합니다. 검사가 끝날 때까지(최대 몇 분) 기다리면 됩니다. Microsoft Store에서 받으면 이 검사 없이 바로 설치됩니다.</p></details>
     <details><summary>PC를 바꾸면 어떻게 하나요?</summary><p>쓰던 PC에서 도움말 → 라이선스 → "이 PC에서 해제"를 누른 뒤, 새 PC에서 같은 키를 입력하면 됩니다.</p></details>
     <details><summary>환불은 어떻게 하나요?</summary><p>구매 후 {{REFUND_DAYS}}일 안에 구매 확인 메일의 링크나 아래 문의처로 요청하시면 전액 환불해 드립니다.</p></details>
   </div>
