@@ -2,7 +2,7 @@
 
 이 문서는 구현 진행 기록이며 제품 범위의 최종 기준은 `docs/FindInside-기획문서.md`다.
 
-## 현재: 1.0.0 판매 준비 (2026-09-30)
+## 현재: 1.0.1 — Microsoft Store 공개, 판매 준비 (2026-09-30)
 
 ### 완료
 
@@ -33,16 +33,31 @@
 - 이용약관·개인정보처리방침·오픈소스 고지(`legal/` → `src/legal/`, `site/`)
 - 판매 페이지(`web/` → `site/`, https://findinside.netlify.app)
 - 테스트 모드에서 시험 구매 → 받은 키로 설치된 앱 활성화까지 확인 (PC 1/2 등록)
+- 체험판 설치 파일 배포: 공개 저장소 kimheunghan/findinside-download 릴리스 (`releases/latest/download/Find_Setup.exe`)
+
+**7단계 — Microsoft Store (1.0.0 공개, 1.0.1 업데이트 준비)**
+- 개인 개발자 계정(무료), 앱 FindInside, Store ID `9MSTC81374SK`, https://apps.microsoft.com/detail/9MSTC81374SK
+- 스토어용 MSIX 패키지 `npm run dist:store` (스토어가 서명 → 인증서 불필요, Windows·V3 경고 없음)
+- 무료 앱 + 외부 결제(Lemon Squeezy) 선언, 연령 등급 3+, 한국어 목록
+- 판매 페이지 기본 버튼을 "Microsoft Store에서 무료 체험"으로, 설치 파일 직접 받기는 보조 링크
+
+**1.0.1**
+- 검색 결과 파일 이름 앞에 형식을 색깔로 표시 (HWP 파랑, 엑셀 초록, PDF 빨강, 이미지 주황, 메일 보라) — 판매 페이지 예시 화면과 일치
+- 검색 위치 경로가 길면 옆 화면을 덮던 문제 수정
+- 스토어 스크린샷용 예시 문서 스크립트 (`scripts/store-demo.js`, `scripts/store-demo-media.js`)
 
 ### 다음
 
-1. Lemon Squeezy 본인 확인 심사 통과 → 실제 판매(Live) 전환, 상품을 Live로 복사하고 결제 링크 교체
-2. 체험판 내려받기 주소(`downloadUrl`) 정하기, 판매 페이지에 구매·내려받기 버튼 연결
-3. 코드 서명 (서명 없는 설치 파일은 Windows 경고가 뜸)
-4. DOC·XLS·PPT, `AND`/`OR`/`NOT`, 날짜 조건
-5. 자동 업데이트, Microsoft 365 연결, 의미 검색, 육안 검수·수집함
+1. Lemon Squeezy 실제 판매(Live) 전환: 상품을 Live로 복사하고 결제 링크 교체 (본인 확인 완료)
+2. 스토어 1.0.1 업데이트 제출 (새 패키지·스크린샷), 판매 페이지(`site/`) Netlify에 다시 올리기
+3. Lemon Squeezy 상품 Files에 설치 파일, 2단계 인증
+4. 코드 서명은 보류 (스토어 배포로 대체, 설치 파일 직접 받기에는 경고가 남음)
+5. DOC·XLS·PPT, `AND`/`OR`/`NOT`, 날짜 조건
+6. 자동 업데이트, Microsoft 365 연결, 의미 검색, 육안 검수·수집함
 
 ### 알려진 주의점
 
 - 실행 중인 FindInside가 C:\ 전체를 감시하면 빌드 폴더를 읽어 빌드가 EPERM으로 실패한다 → `npm run dist`가 먼저 앱을 닫는다.
 - 빌드 후에는 설치된 파일(`%LOCALAPPDATA%\Programs\findinside\resources\app`)에 변경이 들어갔는지 확인한다.
+- 스토어에 새 패키지를 올리려면 `package.json` 버전을 올려야 한다 (예: 1.0.0 → 1.0.1).
+- 새 버전 배포 순서: 버전 올리기 → `npm test` → `npm run dist` + `npm run dist:store` → GitHub 릴리스(findinside-download)에 Find_Setup.exe → Partner Center 새 제출에 appx → `site/` 다시 올리기
