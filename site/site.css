@@ -163,3 +163,7 @@ a { color: var(--accent); }
 
 .alt-download { display: inline-block; margin-top: 8px; color: var(--hero-muted); font-size: 13px; }
 .alt-download:hover { color: #fff; }
+
+.store-cta { display: flex; align-items: center; min-height: 52px; }
+.store-cta ms-store-badge { display: block; }
+.cta { align-items: center; }
