@@ -163,3 +163,16 @@ a { color: var(--accent); }
 
 .alt-download { display: inline-block; margin-top: 8px; color: var(--hero-muted); font-size: 13px; }
 .alt-download:hover { color: #fff; }
+
+/* 검색 대상별 안내 페이지 (hwp-search.html 등) */
+.hero.page { padding: 56px 0 64px; }
+.hero.page .hero-copy { max-width: 760px; }
+.hero.page h1 { font-size: clamp(30px, 4vw, 44px); }
+.crumb { margin: 0 0 14px; font-size: 13px; color: var(--hero-muted); }
+.crumb a { color: var(--hero-muted); }
+.prose { max-width: 760px; }
+.prose p, .prose li { color: var(--muted); }
+.prose h3 { margin: 28px 0 6px; font-size: 19px; color: var(--text); }
+.related { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; }
+.related a { display: inline-block; padding: 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-weight: 700; text-decoration: none; }
+.related a:hover { border-color: var(--accent); }
