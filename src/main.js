@@ -582,11 +582,27 @@ ipcMain.handle("mail:view", async (_, ref) => {
   return {
     subject: mail.subject, from: mail.from, to: mail.to, cc: mail.cc, date: mail.date,
     body: String(mail.body || "").slice(0, 300_000),
-    attachments: await saveAttachments(file, mail.attachments || []),
+    html: inlineImages(mail.html || "", mail.attachments || []),
+    // 본문 HTML에 이미 그려지는 이미지(cid)는 Outlook처럼 첨부 목록에서 뺀다
+    attachments: await saveAttachments(file, (mail.attachments || []).filter((item) => !(item.inline && mail.html))),
     file,
     webmail: webmailUrl(account, messageId)
   };
 });
+
+// 본문 HTML의 <img src="cid:..."> 를 메일에 함께 든 이미지(data: 주소)로 바꾼다. 메일 보기는 바깥 주소를 불러오지 않는다.
+// 너무 큰 HTML·이미지는 빼서 보기 창이 느려지지 않게 한다.
+function inlineImages(html, attachments) {
+  if (!html || html.length > 3 * 1024 * 1024) return "";
+  const images = new Map();
+  for (const item of attachments) {
+    if (item.cid && item.content && item.content.length <= 2 * 1024 * 1024 && /^image\//i.test(item.contentType)) {
+      images.set(item.cid.replace(/^<|>$/g, "").toLowerCase(), `data:${item.contentType};base64,${item.content.toString("base64")}`);
+    }
+  }
+  if (!images.size) return html;
+  return html.replace(/cid:([^"'\s)>]+)/gi, (match, cid) => images.get(decodeURIComponent(cid).toLowerCase()) || match);
+}
 
 // 첨부파일을 임시 폴더(메일마다 따로)에 풀어 두고 { name, size, path }로 돌려준다. 열기·저장은 이 파일로 한다.
 // 내용이 없는 첨부(MSG 안에 든 메일 등)는 path 없이 이름만 돌려준다.

@@ -188,3 +188,4 @@ header { max-width: 900px; margin: 0 auto; }
 .viewerDialog .mailButtons button { width: auto; margin: 0; }
 .viewerDialog .mailButtons button[hidden] { display: none; }
 .viewerBody:focus, .viewerBody:focus-visible { outline: none; }
+.viewerBody .mailFrame { display: block; width: 100%; min-height: 80px; border: 0; border-radius: 8px; background: #fff; }
