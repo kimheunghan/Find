@@ -424,7 +424,9 @@ function searchContent(db, terms) {
       if (match.hits.length < HITS_PER_FILE && !match.chunkIds.has(row.id)) {
         match.chunkIds.add(row.id);
         const snippet = makeSnippet(row.text, term, { loose: isOcrLocation(row.location) });
-        match.hits.push({ location: describeLocation(resolveLocation(JSON.parse(row.location), snippet.at)), snippet });
+        // target: 누르면 그 위치로 가기 위한 원래 위치 (쪽·슬라이드·시트 칸·줄). marks는 화면에 필요 없어 뺀다.
+        const { marks, ...target } = resolveLocation(JSON.parse(row.location), snippet.at) || {};
+        match.hits.push({ location: describeLocation(target), target, snippet });
       }
     }
   }

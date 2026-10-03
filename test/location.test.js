@@ -48,9 +48,11 @@ function pageDef(bodyHeight) {
   return data;
 }
 
-function tableHeader(height) {
+// attrs: 개체 속성 (bit 0 글자처럼 취급, bit 21~23 본문과의 배치: 1 = 자리 차지)
+function tableHeader(height, attrs = 0) {
   const data = Buffer.alloc(40);
   data.writeUInt32LE(0x74626c20, 0); // 'tbl '
+  data.writeUInt32LE(attrs, 4);
   data.writeUInt32LE(height, 20);
   return data;
 }
@@ -77,8 +79,8 @@ function makeHwpWithLayout(paragraphs, bodyHeight = 70000) {
     records.push(record(67, 1, paraText(paragraph.text)));
     records.push(record(69, 1, lineSeg(paragraph.vpos)));
     if (paragraph.table) {
-      const { rowHeight, cells } = paragraph.table;
-      records.push(record(71, 1, tableHeader(rowHeight * cells.length)));
+      const { rowHeight, cells, attrs } = paragraph.table;
+      records.push(record(71, 1, tableHeader(rowHeight * cells.length, attrs)));
       cells.forEach((cell, row) => {
         records.push(record(72, 2, cellHeader(row, rowHeight)));
         records.push(record(66, 2, Buffer.alloc(8)));
@@ -94,7 +96,8 @@ function makeHwpWithLayout(paragraphs, bodyHeight = 70000) {
 }
 
 test("HWP: 줄 위치가 위로 돌아가면 새 쪽, 표 칸은 행 높이로 쪽을 계산하고 여러 쪽 표 뒤 본문도 넘긴다", async () => {
-  // 본문 높이 70000. 2쪽 맨 위에서 시작한 표(행 4개 × 30000)는 셋째 행까지 2쪽, 넷째 행은 3쪽.
+  // 본문 높이 70000. 2쪽 맨 위에서 시작한 표(행 4개 × 30000)는 둘째 행까지 2쪽. 셋째 행은 쪽 끝에 걸려
+  // 통째로 3쪽으로 넘어간다 (한글 기본값 "셀 단위로 나눔").
   const file = await write("a.hwp", makeHwpWithLayout([
     { text: "첫째 쪽 머리말", vpos: 0 },
     { text: "첫째 쪽 끝", vpos: 60000 },
@@ -105,9 +108,33 @@ test("HWP: 줄 위치가 위로 돌아가면 새 쪽, 표 칸은 행 높이로 �
   assert.equal(whereIs(chunks, "머리말"), "1쪽");
   assert.equal(whereIs(chunks, "견적"), "2쪽");
   assert.equal(whereIs(chunks, "사양"), "2쪽");
-  assert.equal(whereIs(chunks, "단가"), "2쪽");
+  assert.equal(whereIs(chunks, "단가"), "3쪽");
   assert.equal(whereIs(chunks, "합계"), "3쪽");
   assert.equal(whereIs(chunks, "결론"), "3쪽", "여러 쪽에 걸친 표 뒤의 본문");
+});
+
+test("HWP: 쪽 전체를 채운 표가 연달아 오면(둘 다 줄 위치 0) 쪽을 하나씩 넘긴다", async () => {
+  const file = await write("full.hwp", makeHwpWithLayout([
+    { text: "첫 쪽 큰 표", vpos: 0 },
+    { text: "둘째 쪽 큰 표", vpos: 0 },
+    { text: "둘째 쪽 아래 설명", vpos: 10000 }
+  ]));
+  const chunks = await extractFile(file);
+  assert.equal(whereIs(chunks, "첫 쪽"), "1쪽");
+  assert.equal(whereIs(chunks, "둘째 쪽 큰"), "2쪽");
+  assert.equal(whereIs(chunks, "설명"), "2쪽");
+});
+
+test("HWP: 자리 차지 표가 저장된 줄 위치보다 커서 아래 줄을 밀어내면, 본문을 넘친 줄은 다음 쪽", async () => {
+  // 한글이 마지막으로 저장한 줄 위치(20000, 45000)는 표(높이 50000)와 겹친다. 한글은 열 때 줄을 표 밑으로 민다.
+  const file = await write("push.hwp", makeHwpWithLayout([
+    { text: "표를 담은 문단", vpos: 0, table: { rowHeight: 50000, cells: ["표 칸"], attrs: 1 << 21 } },
+    { text: "표 바로 아래 줄", vpos: 20000 },
+    { text: "밀려난 줄", vpos: 45000 }
+  ]));
+  const chunks = await extractFile(file);
+  assert.equal(whereIs(chunks, "바로 아래"), "1쪽");
+  assert.equal(whereIs(chunks, "밀려난"), "2쪽");
 });
 
 test("HWP: 용지 정보가 없으면 표 칸의 쪽을 추정하지 않고 표가 시작하는 쪽만 알린다", async () => {
@@ -138,9 +165,22 @@ test("HWPX: 용지·표·칸 높이로 여러 쪽에 걸친 표의 칸 쪽을 �
   const chunks = await extractFile(await write("b.hwpx", makeZip({ "Contents/section0.xml": xml })));
   assert.equal(whereIs(chunks, "견적"), "2쪽");
   assert.equal(whereIs(chunks, "사양"), "2쪽");
-  assert.equal(whereIs(chunks, "단가"), "2쪽");
+  assert.equal(whereIs(chunks, "단가"), "3쪽");
   assert.equal(whereIs(chunks, "합계"), "3쪽");
   assert.equal(whereIs(chunks, "결론"), "3쪽");
+});
+
+test("HWPX: 가로 용지 구역은 용지 너비를 세로 길이로 써서 표 행을 쪽에 나눈다", async () => {
+  const line = (vertpos) => `<hp:linesegarray><hp:lineseg textpos="0" vertpos="${vertpos}" flags="393216"/></hp:linesegarray>`;
+  const p = (text, vertpos, inner = "") => `<hp:p><hp:run><hp:t>${text}</hp:t>${inner}</hp:run>${line(vertpos)}</hp:p>`;
+  const cell = (row, text) => `<hp:tc><hp:subList>${p(text, 0)}</hp:subList><hp:cellAddr colAddr="0" rowAddr="${row}"/><hp:cellSpan colSpan="1" rowSpan="1"/><hp:cellSz width="1000" height="30000"/></hp:tc>`;
+  const table = `<hp:tbl rowCnt="2" colCnt="1" pageBreak="CELL"><hp:sz width="1000" height="60000"/><hp:pos treatAsChar="1"/>${cell(0, "첫 행 사양")}${cell(1, "둘째 행 합계")}</hp:tbl>`;
+  // 세로 용지라면 본문 높이 86000에 두 행이 다 들어가지만, 가로 용지는 44000이라 둘째 행이 다음 쪽으로 간다
+  const secPr = `<hp:secPr><hp:pagePr landscape="NARROWLY" width="48000" height="90000"><hp:margin left="0" right="0" top="1000" bottom="1000" header="1000" footer="1000"/></hp:pagePr></hp:secPr>`;
+  const xml = `<hs:sec>${p("표 앞", 0, secPr)}${p("표 문단", 2000, table)}</hs:sec>`;
+  const chunks = await extractFile(await write("landscape.hwpx", makeZip({ "Contents/section0.xml": xml })));
+  assert.equal(whereIs(chunks, "사양"), "1쪽");
+  assert.equal(whereIs(chunks, "합계"), "2쪽");
 });
 
 test("DOCX: Word가 남긴 쪽 넘김 표시(lastRenderedPageBreak)로 쪽을 센다", async () => {

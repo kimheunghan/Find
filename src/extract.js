@@ -19,9 +19,10 @@ const MAX_MAIL_DEPTH = 3;
 const MAX_ATTACHMENTS = 50;
 // 형식별 추출 방식 버전. 올리면 그 형식의 파일만 백그라운드에서 다시 추출한다 (PDF·이미지 OCR은 다시 하지 않음).
 // 2: 실제 일치한 줄·칸 위치(marks), HWP·HWPX·DOCX 쪽 번호, PPTX 발표 순서·시작 번호
+// HWP·HWPX 3: 표에 밀린 줄, 연달아 오는 쪽 전체 표, 가로 용지, 셀 단위로 나뉘는 여러 쪽 표를 반영한 쪽 번호
 // 이미지: 4 = Windows OCR 빠른 판독(작은 글씨 2배 확대, 세로쓰기 다시 읽기), 5 = 빠른 판독 + PaddleOCR 정밀 판독 (PRECISE_OCR_VERSION)
 const EXTRACTOR_VERSIONS = {
-  txt: 2, csv: 2, md: 2, log: 2, docx: 2, xlsx: 2, pptx: 2, hwpx: 2, hwp: 2,
+  txt: 2, csv: 2, md: 2, log: 2, docx: 2, xlsx: 2, pptx: 2, hwpx: 3, hwp: 3,
   png: 4, jpg: 4, jpeg: 4, gif: 4, webp: 4, bmp: 4, tif: 4, tiff: 4
 };
 const PRECISE_OCR_VERSION = 5;
@@ -234,18 +235,96 @@ function extractPptx(zip) {
 }
 
 // 본문 줄 배치로 쪽을 센다 (HWP·HWPX 공통): "쪽의 첫 줄" 표시(bit 0)가 있거나,
-// 단 바뀜(bit 1)이 아닌데 줄의 세로 위치가 위로 돌아가면 새 쪽이다.
-function countPage(state, vpos, flags) {
+// 단 바뀜(bit 1)이 아닌데 줄의 세로 위치가 위로 돌아가거나 그대로이면 새 쪽이다.
+// 저장된 줄 위치는 한글이 마지막으로 배치한 값이라, 그 뒤 표가 커졌으면 표 아래 줄들이 표와 겹친 위치로 남아 있다.
+// 한글은 열 때 그 줄들을 표 밑(state.floor)으로 밀어내므로, 밀린 만큼(state.drift)을 더하고 본문 높이를 넘으면 다음 쪽으로 넘긴다.
+// 반환값: 이 쪽 안에서 줄의 실제 세로 위치
+function countPage(state, vpos, flags, height = 0) {
   state.sawLayout = true;
   const newColumnOnly = (flags & 0x2) && !(flags & 0x1);
-  const movedUp = state.lastVpos !== null && vpos < state.lastVpos && !newColumnOnly;
-  if ((flags & 0x1) || movedUp || state.page === 0) state.page += 1;
+  // 같은 쪽 안에서 줄 위치는 늘 커진다. 쪽 전체를 채운 표가 연달아 오면 둘 다 0에 놓이므로 "같거나 작으면" 새 쪽이다.
+  // 단, 여러 쪽 표가 끝난 위치(추정값)와 같은 것은 새 쪽으로 보지 않는다.
+  const movedUp = state.lastVpos !== null && (vpos < state.lastVpos || (vpos === state.lastVpos && !state.afterTable)) && !newColumnOnly;
+  state.afterTable = false;
+  if ((flags & 0x1) || movedUp || state.page === 0) {
+    state.page += 1;
+    state.drift = 0;
+    state.floor = 0;
+  } else if (state.floor && vpos + (state.drift || 0) < state.floor) {
+    state.drift = state.floor - vpos;
+  }
   state.lastVpos = vpos;
+  if (state.drift && state.bodyHeight && vpos + state.drift + height > state.bodyHeight) {
+    state.page += 1;
+    state.drift = -vpos;
+    state.floor = 0;
+  }
+  return vpos + (state.drift || 0);
+}
+
+// 글자처럼 취급하지 않고 "자리 차지"로 놓인 표·그림은 아래 줄을 밀어낸다 (본문 높이 안에 들어갈 때만; 넘치면 표 계산이 쪽을 넘긴다).
+function pushBelow(state, bottom) {
+  if (state.bodyHeight && bottom <= state.bodyHeight) state.floor = Math.max(state.floor || 0, bottom);
+}
+
+// 본문 표를 쪽에 배치해 행마다 몇 쪽 뒤에 오는지 구한다 (HWP·HWPX 공통).
+// table: { rows: Map<행, 높이>, height, split: "cell"(셀 단위로 나눔) | "table"(나눔) | "none"(나누지 않음), headerHeight, pushes }
+// 셀 단위로 나누면 쪽 끝에 걸린 행은 통째로 다음 쪽으로 가고, 제목 줄 반복이면 새 쪽마다 제목 행 높이만큼 내려 시작한다.
+// 표 다음 본문은 표가 끝난 쪽·위치에서 이어진다 (state.page·lastVpos).
+function placeTable(state, table, startPage, top) {
+  const body = state.bodyHeight;
+  const rowCount = table.rows.size ? Math.max(...table.rows.keys()) + 1 : 0;
+  let total = 0;
+  for (let row = 0; row < rowCount; row += 1) total += table.rows.get(row) || 0;
+  const height = Math.max(total, table.height || 0);
+  const rowPage = new Map();
+  let page = 0;
+  let y = top;
+  // 나누지 않는 표가 남은 자리에 안 들어가면 통째로 다음 쪽에서 시작한다
+  if (table.split === "none" && top > 0 && top + height > body && height <= body) {
+    page = 1;
+    y = 0;
+  }
+  const header = Math.min(table.headerHeight || 0, body / 2);
+  for (let row = 0; row < rowCount; row += 1) {
+    const h = table.rows.get(row) || 0;
+    if (table.split !== "table" && y + h > body && y > (page === 0 ? 0 : header)) {
+      page += 1;
+      y = header;
+    }
+    rowPage.set(row, page);
+    y += h;
+    while (y > body) { // 한 쪽보다 큰 행, 또는 아무 데서나 나누는 표
+      page += 1;
+      y -= body;
+    }
+  }
+  // 행 높이를 다 알 수 없으면(행 병합 등) 표 전체 높이만큼은 차지한 것으로 본다
+  y += Math.max(height - total, 0);
+  while (y > body) {
+    page += 1;
+    y -= body;
+  }
+  if (page > 0) {
+    state.page = Math.max(state.page, startPage + page);
+    state.lastVpos = y;
+    state.afterTable = true;
+    state.drift = 0;
+    state.floor = 0;
+  } else if (table.pushes) {
+    pushBelow(state, y);
+  }
+  return { rowPage, endPage: page, endY: y };
+}
+
+// 가로 용지(HWP 용지 속성 bit 0, HWPX landscape="NARROWLY")는 용지 너비가 세로 길이가 된다.
+function bodyHeightOf(width, height, landscape, top, bottom, header, footer) {
+  return (landscape ? width : height) - top - bottom - header - footer;
 }
 
 // HWPX 문단을 문서 순서대로 { text, page, inTable }로 돌려준다. 본문(최상위) 문단의 <hp:lineseg>로 쪽을 세고,
 // 표 안 문단은 표를 담은 본문 문단의 쪽(표가 시작하는 쪽)을 따른다.
-const HWPX_TOKEN = /<(\/?)hp:(p|t|lineseg|tbl|tc|cellAddr|cellSpan|cellSz|sz|pagePr|margin)\b([^>]*?)(\/?)>|<[^>]*>|([^<]+)/g;
+const HWPX_TOKEN = /<(\/?)hp:(p|t|lineseg|tbl|tc|cellAddr|cellSpan|cellSz|cellMargin|sz|pos|pagePr|margin)\b([^>]*?)(\/?)>|<[^>]*>|([^<]+)/g;
 const attr = (attrs, name) => Number(new RegExp(`\\b${name}="(-?\\d+)"`).exec(attrs)?.[1] || 0);
 
 function hwpxParagraphs(xml, state) {
@@ -255,7 +334,7 @@ function hwpxParagraphs(xml, state) {
   let tableDepth = 0;
   let table = null; // 본문 표 { height, rows: Map<행, 높이>, cells: [{ row, paragraphs }] }
   let cell = null;
-  let pageHeight = 0;
+  let paper = null; // 현재 구역의 용지 { width, height, landscape }
   for (const [, close, name, attrs, selfClosing, text] of xml.matchAll(HWPX_TOKEN)) {
     if (text !== undefined) {
       if (inText > 0 && stack.length) stack[stack.length - 1].text += decodeXml(text);
@@ -270,32 +349,27 @@ function hwpxParagraphs(xml, state) {
         const paragraph = stack.pop();
         if (paragraph?.top && paragraph.page !== null) {
           for (let i = paragraph.start; i < out.length; i += 1) out[i].page ??= paragraph.page;
-          // 표 칸의 쪽: 표를 담은 문단의 줄 위치 + 칸 위 행들의 높이 (HWP와 같은 계산).
+          // 표 칸의 쪽: 표를 담은 문단의 줄 위치에서 행을 쪽에 배치한다 (placeTable, HWP와 같은 계산).
           // 한 문단에 표가 여러 개면 앞 표 아래에 이어 놓인 것으로 보고 차례로 쌓는다.
           if (paragraph.tables.length && state.bodyHeight) {
+            let page = paragraph.page;
             let top = Math.max(paragraph.vpos || 0, 0);
             for (const table of paragraph.tables) {
-              const rowTop = new Map();
-              let y = 0;
-              for (let row = 0; row <= Math.max(-1, ...table.rows.keys()); row += 1) {
-                rowTop.set(row, y);
-                y += table.rows.get(row) || 0;
-              }
+              const start = top + (table.asChar ? 0 : Math.max(table.vertOffset, 0));
+              const { rowPage, endPage, endY } = placeTable(state, table, page, start);
+              const firstPage = page + (rowPage.get(0) || 0);
               for (const caption of table.captions) {
-                caption.page = paragraph.page + Math.floor(top / state.bodyHeight);
+                caption.page = firstPage;
                 caption.inTable = false;
               }
               for (const item of table.cells) {
                 for (const inner of item.paragraphs) {
-                  inner.page = paragraph.page + Math.floor((top + (rowTop.get(item.row) || 0)) / state.bodyHeight);
+                  inner.page = page + (rowPage.get(item.row) || 0);
                   inner.inTable = false;
                 }
               }
-              top += table.height || y;
-            }
-            if (top > state.bodyHeight) {
-              state.page = Math.max(state.page, paragraph.page + Math.floor(top / state.bodyHeight));
-              state.lastVpos = top % state.bodyHeight;
+              page += endPage;
+              top = endY;
             }
           }
         }
@@ -304,35 +378,59 @@ function hwpxParagraphs(xml, state) {
       inText += close ? -1 : 1;
     } else if (name === "tbl" && !selfClosing) {
       if (!close && tableDepth === 0 && stack[stack.length - 1]?.top) {
-        table = { height: null, rows: new Map(), cells: [], captions: [] };
+        const pageBreak = /\bpageBreak="(\w+)"/.exec(attrs)?.[1];
+        table = {
+          height: null, rows: new Map(), cells: [], captions: [], headerRows: new Set(),
+          split: pageBreak === "NONE" ? "none" : pageBreak === "TABLE" ? "table" : "cell",
+          repeatHeader: /\brepeatHeader="1"/.test(attrs),
+          pushes: /\btextWrap="TOP_AND_BOTTOM"/.test(attrs), asChar: false, vertOffset: 0, posSeen: false
+        };
         stack[stack.length - 1].tables.push(table);
       }
       tableDepth += close ? -1 : 1;
-      if (close && tableDepth === 0) table = null;
+      if (close && tableDepth === 0 && table) {
+        if (table.repeatHeader) table.headerHeight = [...table.headerRows].reduce((sum, row) => sum + (table.rows.get(row) || 0), 0);
+        table.pushes &&= !table.asChar;
+        table = null;
+      }
     } else if (name === "sz" && table && tableDepth === 1 && !cell && table.height === null) {
       table.height = attr(attrs, "height");
+    } else if (name === "pos" && table && tableDepth === 1 && !cell && !table.posSeen) {
+      table.posSeen = true;
+      table.asChar = /\btreatAsChar="1"/.test(attrs);
+      table.vertOffset = attr(attrs, "vertOffset") | 0; // 음수는 부호 없는 32비트로 저장된다
     } else if (name === "tc" && table && tableDepth === 1 && !selfClosing) {
-      if (!close) cell = { row: 0, rowSpan: 1, paragraphs: [] };
+      if (!close) cell = { row: 0, rowSpan: 1, paragraphs: [], header: /\bheader="1"/.test(attrs), content: 0, margin: 0 };
       else if (cell) {
+        // 저장된 칸 높이(cellSz)보다 칸 안 글줄이 더 내려가 있으면 그만큼 행이 늘어난 것이다
+        if (cell.rowSpan === 1 && cell.content) table.rows.set(cell.row, Math.max(table.rows.get(cell.row) || 0, cell.content + cell.margin));
         table.cells.push(cell);
         cell = null;
       }
     } else if (cell && tableDepth === 1 && name === "cellAddr") {
       cell.row = attr(attrs, "rowAddr");
+      if (cell.header) table.headerRows.add(cell.row);
     } else if (cell && tableDepth === 1 && name === "cellSpan") {
       cell.rowSpan = attr(attrs, "rowSpan") || 1;
+    } else if (cell && tableDepth === 1 && name === "cellMargin") {
+      // 4294967295(-1)은 "표 기본 여백을 따름"이다
+      cell.margin = Math.max(attr(attrs, "top") | 0, 0) + Math.max(attr(attrs, "bottom") | 0, 0);
     } else if (cell && tableDepth === 1 && name === "cellSz" && cell.rowSpan === 1) {
       table.rows.set(cell.row, Math.max(table.rows.get(cell.row) || 0, attr(attrs, "height")));
     } else if (name === "pagePr" && !close) {
-      pageHeight = attr(attrs, "height");
-    } else if (name === "margin" && pageHeight && !state.bodyHeight) {
-      state.bodyHeight = pageHeight - attr(attrs, "top") - attr(attrs, "bottom") - attr(attrs, "header") - attr(attrs, "footer");
+      paper = { width: attr(attrs, "width"), height: attr(attrs, "height"), landscape: /\blandscape="NARROWLY"/.test(attrs) };
+    } else if (name === "margin" && paper) {
+      // 구역마다 용지(방향·여백)가 다를 수 있다
+      state.bodyHeight = bodyHeightOf(paper.width, paper.height, paper.landscape, attr(attrs, "top"), attr(attrs, "bottom"), attr(attrs, "header"), attr(attrs, "footer"));
+      paper = null;
     } else if (name === "lineseg") {
       const paragraph = stack[stack.length - 1];
-      if (paragraph?.top) {
-        countPage(state, attr(attrs, "vertpos"), attr(attrs, "flags"));
+      if (cell && tableDepth === 1 && !paragraph?.top) {
+        cell.content = Math.max(cell.content, attr(attrs, "vertpos") + attr(attrs, "vertsize"));
+      } else if (paragraph?.top) {
+        const y = countPage(state, attr(attrs, "vertpos"), attr(attrs, "flags"), attr(attrs, "vertsize"));
         paragraph.page ??= Math.max(state.page, 1);
-        paragraph.vpos ??= attr(attrs, "vertpos");
+        paragraph.vpos ??= y;
       }
     }
   }
@@ -433,27 +531,17 @@ const LINE_SEG_SIZE = 36;
 const HWPTAG_CTRL_HEADER = 71;
 const HWPTAG_LIST_HEADER = 72;
 const HWPTAG_PAGE_DEF = 73;
+const HWPTAG_TABLE = 77;
 const CTRL_TABLE = 0x74626c20; // 'tbl '
 
-// 본문 표의 칸이 몇 쪽에 오는지 계산한다: 표 위치(담은 문단의 줄 위치) + 그 칸 위 행들의 높이를 쪽 본문 높이로 나눈다.
+// 본문 표의 칸이 몇 쪽에 오는지 계산한다: 표 위치(담은 문단의 줄 위치)에서 행을 쪽에 배치한다 (placeTable).
 // 표가 여러 쪽에 걸치면 표 뒤 본문의 쪽도 그만큼 넘긴다. 쪽 본문 높이를 모르면 "표가 시작하는 쪽"으로만 남긴다.
 function finishHwpTable(table, state) {
   if (!table || !state.bodyHeight || table.startPage === null) return;
-  const rowTop = new Map();
-  let top = 0;
-  for (let row = 0; row <= Math.max(-1, ...table.rows.keys()); row += 1) {
-    rowTop.set(row, top);
-    top += table.rows.get(row) || 0;
-  }
+  const { rowPage } = placeTable(state, table, table.startPage, table.top);
   for (const paragraph of table.paragraphs) {
-    const y = table.top + (rowTop.get(paragraph.tableRow) || 0);
-    paragraph.page = table.startPage + Math.floor(y / state.bodyHeight);
+    paragraph.page = table.startPage + (rowPage.get(paragraph.tableRow) || 0);
     paragraph.inTable = false; // 쪽을 계산했으므로 "표가 시작하는 쪽"이 아니라 그 쪽으로 표시한다
-  }
-  const end = table.top + table.height;
-  if (end > state.bodyHeight) {
-    state.page = Math.max(state.page, table.startPage + Math.floor(end / state.bodyHeight));
-    state.lastVpos = end % state.bodyHeight;
   }
 }
 
@@ -478,9 +566,10 @@ function hwpSectionParagraphs(buffer, state = { page: 0, lastVpos: null }) {
     }
     const data = buffer.subarray(offset, offset + size);
     if (tag === HWPTAG_PAGE_DEF && data.length >= 32) {
-      // 용지 높이 - 위·아래 여백 - 머리말·꼬리말 여백 = 본문 높이
-      const [height, top, bottom, headerMargin, footerMargin] = [4, 16, 20, 24, 28].map((at) => data.readUInt32LE(at));
-      state.bodyHeight = height - top - bottom - headerMargin - footerMargin;
+      // 용지 높이 - 위·아래 여백 - 머리말·꼬리말 여백 = 본문 높이. 속성(36) bit 0이 가로 용지면 너비가 세로 길이다.
+      const [width, height, top, bottom, headerMargin, footerMargin] = [0, 4, 16, 20, 24, 28].map((at) => data.readUInt32LE(at));
+      const landscape = data.length >= 40 && Boolean(data.readUInt32LE(36) & 0x1);
+      state.bodyHeight = bodyHeightOf(width, height, landscape, top, bottom, headerMargin, footerMargin);
     } else if (tag === HWPTAG_PARA_HEADER && level === 0) {
       finishHwpTable(table, state);
       table = null;
@@ -495,16 +584,23 @@ function hwpSectionParagraphs(buffer, state = { page: 0, lastVpos: null }) {
       }
     } else if (tag === HWPTAG_PARA_LINE_SEG && level === 1 && topLevel) {
       for (let i = 0; i + LINE_SEG_SIZE <= data.length; i += LINE_SEG_SIZE) {
-        countPage(state, data.readInt32LE(i + 4), data.readUInt32LE(i + 32));
+        const y = countPage(state, data.readInt32LE(i + 4), data.readUInt32LE(i + 32), data.readInt32LE(i + 8));
         if (i === 0 && topLevel.page === null) {
           topLevel.page = Math.max(state.page, 1);
-          topLevel.vpos = data.readInt32LE(i + 4);
+          topLevel.vpos = y;
           for (const member of topLevel.members) member.page = topLevel.page;
         }
       }
     } else if (tag === HWPTAG_CTRL_HEADER && level === 1 && topLevel && data.length >= 24 && data.readUInt32LE(0) === CTRL_TABLE) {
       finishHwpTable(table, state);
-      table = { startPage: topLevel.page, top: Math.max(topLevel.vpos || 0, 0), height: data.readUInt32LE(20), rows: new Map(), paragraphs: [] };
+      // 개체 속성(4): bit 0 글자처럼 취급, bit 21~23 본문과의 배치(1 = 자리 차지). 세로 오프셋(8)은 글자처럼 취급하지 않을 때만 쓴다.
+      const attrs = data.readUInt32LE(4);
+      const asChar = Boolean(attrs & 0x1);
+      const top = Math.max(topLevel.vpos || 0, 0) + (asChar ? 0 : Math.max(data.readInt32LE(8), 0));
+      table = { startPage: topLevel.page, top, height: data.readUInt32LE(20), rows: new Map(), paragraphs: [], split: "cell", pushes: !asChar && ((attrs >>> 21) & 0x7) === 1 };
+    } else if (tag === HWPTAG_TABLE && level === 2 && table && data.length >= 4) {
+      // 표 속성 bit 0~1: 쪽 경계에서 0 나누지 않음, 1 셀 단위로 나눔, 2 나눔
+      table.split = ["none", "cell", "table", "cell"][data.readUInt32LE(0) & 0x3];
     } else if (tag === HWPTAG_LIST_HEADER && level === 2 && table && data.length >= 24) {
       // 표 칸: 행 번호(10), 행 병합 수(14), 칸 높이(20). 병합하지 않은 칸의 높이로 행 높이를 정한다.
       tableRow = data.readUInt16LE(10);

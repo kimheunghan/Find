@@ -1,13 +1,13 @@
 {
   "name": "findinside",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "내 PC의 파일 이름·문서 내용·이미지 속 글자와 메일을 한 번에 검색하는 Windows 앱",
   "main": "src/main.js",
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
     "test": "node --test",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js && node --check src/tokens.js && node --check src/hanja.js && node --check src/ocrLoose.js && node --check src/mail.js && node --check src/imap.js && node --check src/mailWorker.js && node --check src/pop3.js && node --check src/license.js && node --check src/extract.js && node --check src/ocr.js && node --check src/contentIndex.js && node --check src/contentWorker.js && node --check src/searchWorker.js && node --check src/renderer/highlight.js && node --check src/renderer/renderer.js",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/indexer.js && node --check src/search.js && node --check src/tokens.js && node --check src/hanja.js && node --check src/ocrLoose.js && node --check src/mail.js && node --check src/imap.js && node --check src/mailWorker.js && node --check src/pop3.js && node --check src/license.js && node --check src/extract.js && node --check src/ocr.js && node --check src/contentIndex.js && node --check src/contentWorker.js && node --check src/openAt.js && node --check src/searchWorker.js && node --check src/renderer/highlight.js && node --check src/renderer/renderer.js",
     "setup:ocr": "powershell -ExecutionPolicy Bypass -File scripts/setup-ocr.ps1",
     "qa:ocr": "node scripts/qa-ocr.js",
     "dist": "node scripts/dist.js",

@@ -197,6 +197,23 @@
       </form>
     </dialog>
 
+    <!-- 보기 창: 텍스트 미리보기(일치한 줄로 이동)와 메일 보기 -->
+    <dialog id="viewerDialog" class="mailDialog viewerDialog">
+      <form method="dialog">
+        <div class="viewerHead">
+          <h3 id="viewerTitle"></h3>
+          <dl id="viewerMeta" class="viewerMeta"></dl>
+        </div>
+        <div id="viewerBody" class="viewerBody"></div>
+        <div class="mailButtons">
+          <button type="button" id="viewerWeb" class="secondary" hidden>웹메일에서 열기</button>
+          <button type="button" id="viewerChoose" class="secondary">다른 프로그램으로 열기</button>
+          <button type="button" id="viewerOpen" class="secondary">기본 프로그램으로 열기</button>
+          <button type="submit" class="primary">닫기</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="highlight.js"></script>
     <script src="renderer.js"></script>
   </body>

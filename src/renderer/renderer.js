@@ -118,21 +118,16 @@ function findPhrase(snippet) {
   return `${before}${snippet.match}${after}`.trim();
 }
 
+// 한글 문서가 결과에 처음 보이면 숨긴 한글을 미리 띄워 둔다 (누르면 바로 열리게)
+let hwpWarmed = false;
+
 function renderHits(list, hits, item) {
   list.hidden = !hits.length;
   for (const hit of hits) {
     const line = document.createElement("li");
     const phrase = findPhrase(hit.snippet);
-    line.title = `눌러서 문서 열기 — "${phrase}"을(를) 복사해 둡니다. 문서에서 Ctrl+F 후 Ctrl+V로 찾으세요.`;
-    line.addEventListener("click", async () => {
-      if (item.kind === "mail") {
-        await openMailItem(item);
-        return;
-      }
-      await window.findInside.openAt(item.path, phrase);
-      hintEl.classList.remove("warn");
-      hintEl.textContent = `"${phrase}" 복사됨 — 문서에서 Ctrl+F 후 Ctrl+V로 찾으세요 (${hit.location})`;
-    });
+    line.title = hit.location ? `눌러서 ${hit.location}(으)로 열기` : "눌러서 문서 열기";
+    line.addEventListener("click", () => openHit(item, hit, phrase));
     if (hit.location) {
       const where = document.createElement("span");
       where.className = "where";
@@ -219,6 +214,10 @@ function renderResults(items, total = items.length) {
       item.time ? formatDate(item.time) : ""
     ].filter(Boolean).join(" · ");
     renderHits(row.querySelector(".hits"), item.hits || [], item);
+    if (!hwpWarmed && /\.hwpx?$/i.test(item.path || "")) {
+      hwpWarmed = true;
+      window.findInside.warmHwp();
+    }
     if (isMail) {
       row.querySelector(".open").addEventListener("click", () => openMailItem(item));
       row.querySelector(".show").hidden = true;
@@ -797,15 +796,172 @@ function mailSummary(item) {
   return [item.sender, date, [account?.name || account?.email, folderLabel(item.folder || "")].filter(Boolean).join(" · ")].filter(Boolean).join("  |  ");
 }
 
-async function openMailItem(item) {
-  hintEl.classList.remove("warn");
-  hintEl.textContent = "메일 서버에서 메일을 받아 여는 중…";
+function showHint(text, warn = false) {
+  hintEl.classList.toggle("warn", warn);
+  hintEl.textContent = text;
+}
+
+// 일치한 곳을 누르면: 한글·Word·PowerPoint·Excel은 그 쪽·슬라이드·칸으로, PDF는 그 쪽으로,
+// 텍스트는 앱 안 미리보기의 그 줄로, 메일은 앱 안 메일 보기로 연다. 이동할 수 없으면 파일을 열고 문구를 복사해 둔다.
+async function openHit(item, hit, phrase) {
+  const terms = FindHighlight.queryTerms(queryEl.value);
+  if (item.kind === "mail") return openMailHit(item, hit, phrase, terms);
+  showHint(`${item.name} 여는 중… (${hit.location || "문서"})`);
   try {
-    await window.findInside.openMail(item.path);
-    hintEl.textContent = `메일을 열었습니다: ${item.name}`;
+    const { mode } = await window.findInside.openAt(item.path, phrase, hit.target || {}, hit.snippet.match);
+    if (mode === "preview") return openTextPreview(item, hit.target?.line, terms);
+    if (mode === "mail") return openMailHit(item, hit, phrase, terms);
+    if (mode === "moved") showHint(`${item.name}을(를) ${hit.location || "일치한 곳"}(으)로 열었습니다`);
+    else if (mode === "viewer") showHint(`${item.name} ${hit.location}을(를) 열었습니다. "${phrase}" 복사됨 — Ctrl+F 후 Ctrl+V로 찾으세요`);
+    else showHint(`"${phrase}" 복사됨 — 문서에서 Ctrl+F 후 Ctrl+V로 찾으세요 (${hit.location})`);
   } catch (error) {
-    hintEl.classList.add("warn");
-    hintEl.textContent = `메일을 열지 못했습니다: ${String(error.message || error).replace(/^Error invoking remote method '[^']+': (Error: )?/, "")}`;
+    showHint(`열지 못했습니다: ${ipcMessage(error)}`, true);
+  }
+}
+
+// 메일 결과를 누르면 메일 보기를 띄우고, 일치한 곳이 첨부 안이면 그 첨부도 바로 그 쪽으로 연다
+async function openMailHit(item, hit, phrase, terms) {
+  const attachmentName = hit.target?.attachment;
+  const mail = await openMailItem(item, terms, attachmentName);
+  if (!mail || !attachmentName) return;
+  const attachment = mail.attachments.find((entry) => entry.path && entry.name === attachmentName)
+    || mail.attachments.find((entry) => entry.path && attachmentName.startsWith(entry.name));
+  if (!attachment) return;
+  const { attachment: _, ...inner } = hit.target;
+  showHint(`첨부 ${attachment.name} 여는 중… (${hit.location})`);
+  try {
+    const { mode } = await window.findInside.openAt(attachment.path, phrase, inner, hit.snippet.match);
+    // 텍스트·메일 첨부는 앱 안 미리보기 대신(메일 보기를 덮지 않게) 기본 프로그램으로 연다
+    if (mode === "preview" || mode === "mail") await window.findInside.openMailFile(attachment.path, "default");
+    if (mode === "moved" || mode === "viewer") showHint(`첨부를 일치한 곳으로 열었습니다 (${hit.location})`);
+    else showHint(`첨부 ${attachment.name}을(를) 열었습니다. "${phrase}" 복사됨 — Ctrl+F 후 Ctrl+V로 찾으세요`);
+  } catch (error) {
+    showHint(`첨부를 열지 못했습니다: ${ipcMessage(error)}`, true);
+  }
+}
+
+const viewerDialog = document.querySelector("#viewerDialog");
+const viewerTitle = document.querySelector("#viewerTitle");
+const viewerMeta = document.querySelector("#viewerMeta");
+const viewerBody = document.querySelector("#viewerBody");
+const viewerWeb = document.querySelector("#viewerWeb");
+const viewerChoose = document.querySelector("#viewerChoose");
+const viewerOpen = document.querySelector("#viewerOpen");
+let viewerFile = "";
+let viewerWebUrl = "";
+
+function showViewer(title, meta, file, webUrl = "") {
+  viewerTitle.textContent = title;
+  viewerMeta.replaceChildren(...meta.filter(([, value]) => value).flatMap(([label, value]) => {
+    const dt = document.createElement("dt");
+    const dd = document.createElement("dd");
+    dt.textContent = label;
+    dd.textContent = value;
+    return [dt, dd];
+  }));
+  viewerFile = file;
+  viewerWebUrl = webUrl;
+  viewerWeb.hidden = !webUrl;
+  if (!viewerDialog.open) viewerDialog.showModal();
+}
+
+viewerOpen.addEventListener("click", () => window.findInside.openMailFile(viewerFile, "default"));
+viewerChoose.addEventListener("click", () => window.findInside.openMailFile(viewerFile, "choose"));
+viewerWeb.addEventListener("click", () => viewerWebUrl && window.findInside.openExternal(viewerWebUrl));
+
+// 텍스트 미리보기: 메모장은 특정 줄로 열 수 없으므로 앱 안에서 일치한 줄을 가운데에 보여 준다
+async function openTextPreview(item, lineNumber, terms) {
+  let text;
+  try {
+    text = await window.findInside.readText(item.path);
+  } catch (error) {
+    showHint(`미리 보지 못했습니다: ${ipcMessage(error)}`, true);
+    return;
+  }
+  const lines = text.split(/\r?\n/);
+  const shown = lines.slice(0, 50_000);
+  const lowered = terms.map((term) => term.toLowerCase());
+  let current = null;
+  viewerBody.replaceChildren(...shown.map((value, index) => {
+    const line = document.createElement("span");
+    line.className = "line";
+    line.dataset.n = String(index + 1);
+    if (lowered.some((term) => value.toLowerCase().includes(term))) renderHighlighted(line, value, terms);
+    else line.textContent = value;
+    if (index + 1 === lineNumber) {
+      line.classList.add("current");
+      current = line;
+    }
+    return line;
+  }));
+  showViewer(item.name, [["위치", item.path], ["줄", lineNumber ? `${lineNumber}번째 줄` : ""], ["안내", lines.length > shown.length ? "앞 50,000줄만 보여 줍니다" : ""]], item.path);
+  showHint(`${item.name} ${lineNumber ? `${lineNumber}번째 줄` : ""}을(를) 미리 보기로 열었습니다`);
+  requestAnimationFrame(() => (current || viewerBody).scrollIntoView({ block: "center" }));
+}
+
+const fileSize = (bytes) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`;
+
+function renderAttachments(attachments, terms, focusName = "") {
+  const box = document.createElement("div");
+  box.className = "attachments";
+  const title = document.createElement("strong");
+  title.textContent = `첨부 ${attachments.length}개`;
+  const list = document.createElement("ul");
+  for (const attachment of attachments) {
+    const row = document.createElement("li");
+    if (focusName && (attachment.name === focusName || focusName.startsWith(attachment.name))) row.className = "focus";
+    const name = document.createElement("span");
+    name.className = "attachmentName";
+    renderHighlighted(name, attachment.name, terms);
+    const size = document.createElement("small");
+    size.textContent = attachment.path ? fileSize(attachment.size) : "열 수 없는 첨부";
+    row.append(name, size);
+    if (attachment.path) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.textContent = "열기";
+      open.addEventListener("click", () => window.findInside.openMailFile(attachment.path, "default"));
+      const save = document.createElement("button");
+      save.type = "button";
+      save.textContent = "저장";
+      save.addEventListener("click", async () => {
+        try {
+          const saved = await window.findInside.saveAttachment(attachment.path, attachment.name);
+          if (saved) showHint(`첨부를 저장했습니다: ${saved}`);
+        } catch (error) {
+          showHint(`첨부를 저장하지 못했습니다: ${ipcMessage(error)}`, true);
+        }
+      });
+      row.append(open, save);
+    }
+    list.append(row);
+  }
+  box.append(title, list);
+  return box;
+}
+
+// 메일 보기: 연결 프로그램(새 Outlook 등)이 메일을 열지 못해도 앱 안에서 바로 보이게 한다.
+// 기본 프로그램·다른 프로그램·웹메일로 여는 버튼을 함께 둔다.
+// focusAttachment: 일치한 곳이 든 첨부 이름 (목록에서 강조한다). 반환값: 메일 (실패하면 null)
+async function openMailItem(item, terms = FindHighlight.queryTerms(queryEl.value), focusAttachment = "") {
+  showHint(item.kind === "mail" ? "메일 서버에서 메일을 받는 중…" : "메일 파일을 읽는 중…");
+  try {
+    const mail = await window.findInside.viewMail(item.kind === "mail" ? { uri: item.path } : { path: item.path });
+    const body = document.createElement("div");
+    renderHighlighted(body, mail.body || "(본문 없음)", terms);
+    // 첨부는 본문 위에 두어 본문이 길어도 바로 보이게 하고, 하나씩 열기·저장할 수 있게 한다
+    const nodes = mail.attachments.length ? [renderAttachments(mail.attachments, terms, focusAttachment), body] : [body];
+    viewerBody.replaceChildren(...nodes);
+    const date = mail.date ? new Date(mail.date).toLocaleString("ko-KR") : "";
+    showViewer(mail.subject || item.name || "(제목 없음)", [["보낸 사람", mail.from], ["받는 사람", mail.to], ["참조", mail.cc], ["날짜", date]], mail.file, mail.webmail);
+    renderHighlighted(viewerTitle, mail.subject || item.name || "(제목 없음)", terms);
+    viewerBody.scrollTop = 0;
+    requestAnimationFrame(() => viewerBody.querySelector("mark")?.scrollIntoView({ block: "center" }));
+    showHint(`메일을 열었습니다: ${mail.subject || item.name}`);
+    return mail;
+  } catch (error) {
+    showHint(`메일을 열지 못했습니다: ${ipcMessage(error)}`, true);
+    return null;
   }
 }
 

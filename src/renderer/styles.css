@@ -162,3 +162,29 @@ header { max-width: 900px; margin: 0 auto; }
 .licenseSummary { margin: 6px 0 4px; color: #c3cdf0; font-size: 14px; line-height: 1.6; }
 .licenseDialog input[name="key"] { font-family: Consolas, monospace; }
 .licenseDialog .mailButtons button { width: auto; margin: 0; }
+/* 보기 창: 텍스트 미리보기·메일 보기 */
+.viewerDialog { width: 860px; }
+.viewerDialog form { max-height: min(820px, calc(100vh - 48px)); }
+.viewerHead { padding: 16px 20px 10px; border-bottom: 1px solid #243049; }
+.viewerHead h3 { overflow-wrap: anywhere; }
+.viewerMeta { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 6px 0 0; color: #aeb8ce; font-size: 12px; }
+.viewerMeta dt { color: #8894ae; }
+.viewerMeta dd { margin: 0; overflow-wrap: anywhere; }
+.viewerBody { overflow: auto; flex: 1; min-height: 160px; padding: 12px 20px; color: #dfe5f5; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.viewerBody .line { display: block; padding: 0 6px 0 52px; text-indent: -46px; border-radius: 4px; }
+.viewerBody .line::before { content: attr(data-n); display: inline-block; width: 40px; margin-right: 6px; color: #5d6a87; text-align: right; text-indent: 0; font-size: 11px; }
+.viewerBody .line.current { background: #22305a; }
+.viewerBody mark { border-radius: 3px; color: #0b1020; background: #ffd666; }
+.viewerBody .attachments { margin: 0 0 14px; padding: 10px 12px; border: 1px solid #2c3854; border-radius: 10px; color: #aeb8ce; background: #0d1321; font-size: 12px; white-space: normal; }
+.viewerBody .attachments ul { margin: 6px 0 0; padding: 0; list-style: none; }
+.viewerBody .attachments li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid #1c2640; }
+.viewerBody .attachments li:first-child { border-top: 0; }
+.viewerBody .attachments li.focus { margin: 0 -8px; padding: 4px 8px; border-radius: 6px; background: #22305a; }
+.viewerBody .attachmentName { flex: 1; min-width: 0; color: #e4e9f7; overflow-wrap: anywhere; }
+.viewerBody .attachments small { flex: none; color: #8894ae; }
+.viewerBody .attachments button { flex: none; width: auto; margin: 0; padding: 4px 10px; border: 1px solid #2c3854; border-radius: 6px; color: #dfe5f5; background: #1a2440; cursor: pointer; font-size: 12px; }
+.viewerBody .attachments button:hover { border-color: #5b7cfa; }
+.viewerDialog .mailButtons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.viewerDialog .mailButtons button { width: auto; margin: 0; }
+.viewerDialog .mailButtons button[hidden] { display: none; }
+.viewerBody:focus, .viewerBody:focus-visible { outline: none; }
