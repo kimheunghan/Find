@@ -14,7 +14,9 @@ const fsSync = require("node:fs");
 const { indexRoots, isExcluded } = require("./indexer");
 const { Worker } = require("node:worker_threads");
 const { openContentIndex, contentStats } = require("./contentIndex");
-const { SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS } = require("./extract");
+const { SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS, MAIL_EXTENSIONS, decodeText } = require("./extract");
+const { openAt, warmHwp, stopHwp } = require("./openAt");
+const { pathToFileURL } = require("node:url");
 
 let window;
 let contentDb;
@@ -176,7 +178,7 @@ async function checkLicenseOnline() {
     if (!result.changed) return;
     licenseState = result.state;
     await saveLicense();
-    window?.webContents.send("license:changed", licenseInfo());
+    sendToWindow("license:changed", licenseInfo());
   } catch {
     // 다음 실행 때 다시 확인한다
   }
@@ -284,6 +286,11 @@ async function reloadIndex() {
   return loaded;
 }
 
+// 창을 닫은 뒤에도 worker의 진행 알림이 늦게 올 수 있다. 없어진 창에 보내면 "Object has been destroyed"로 앱이 멈춘다.
+function sendToWindow(channel, data) {
+  if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send(channel, data);
+}
+
 function createWindow() {
   window = new BrowserWindow({
     icon: path.join(__dirname, "renderer", "icon.png"),
@@ -302,6 +309,7 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+  window.on("closed", () => { window = null; });
   window.setMenuBarVisibility(false);
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
   window.webContents.once("did-finish-load", () => {
@@ -337,6 +345,9 @@ app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+// 앱이 끝나면 한글 도우미가 숨겨 둔 한글을 닫게 한다
+app.on("before-quit", stopHwp);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
@@ -417,7 +428,7 @@ function askMailWorker(type, payload) {
     mailWorker = new Worker(path.join(__dirname, "mailWorker.js"), { workerData: { dbPath: contentDbPath() } });
     mailWorker.on("message", (message) => {
       if (message.type === "progress") {
-        window?.webContents.send("mail:progress", message.progress);
+        sendToWindow("mail:progress", message.progress);
         // 가져온 메일부터 검색되게 10초에 한 번 검색 목록에 반영한다
         if (Date.now() - lastMailReload > 10_000) {
           lastMailReload = Date.now();
@@ -456,20 +467,20 @@ function syncMail() {
   mailSyncing ||= (async () => {
     for (const account of settings.mailAccounts) {
       try {
-        window?.webContents.send("mail:progress", { account: account.id, started: true });
+        sendToWindow("mail:progress", { account: account.id, started: true });
         const result = await askMailWorker("sync", { account, password: await loadPassword(account.id) });
         account.lastSync = new Date().toISOString();
         account.lastError = null;
-        window?.webContents.send("mail:progress", { account: account.id, finished: true, fetched: result.fetched });
+        sendToWindow("mail:progress", { account: account.id, finished: true, fetched: result.fetched });
       } catch (error) {
         account.lastError = error.message;
-        window?.webContents.send("mail:progress", { account: account.id, finished: true, error: error.message });
+        sendToWindow("mail:progress", { account: account.id, finished: true, error: error.message });
       }
     }
     await saveSettings();
     await searchReady;
     await askSearchWorker("reloadMail").catch(() => {});
-    window?.webContents.send("index:changed", { mail: true });
+    sendToWindow("index:changed", { mail: true });
   })().finally(() => { mailSyncing = null; });
   return mailSyncing;
 }
@@ -510,8 +521,8 @@ ipcMain.handle("mail:folders", async () => {
   return askSearchWorker("mailFolders");
 });
 
-// 메일 열기: 서버에서 원문을 받아 임시 .eml로 저장하고 기본 메일 프로그램으로 연다 (원문은 PC에 쌓아 두지 않음)
-ipcMain.handle("mail:open", async (_, mailUri) => {
+// 메일 원문을 서버에서 받아 임시 .eml로 저장한다 (원문은 PC에 쌓아 두지 않음)
+async function fetchMailFile(mailUri) {
   const { parseMailPath } = require("./imap");
   const { parsePopPath } = require("./pop3");
   const target = mailUri.startsWith("pop3://") ? parsePopPath(mailUri) : parseMailPath(mailUri);
@@ -521,8 +532,103 @@ ipcMain.handle("mail:open", async (_, mailUri) => {
   const dir = path.join(os.tmpdir(), "FindInside-mail");
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, `${String(target.uid).replace(/[^\w.-]/g, "_")}.eml`);
-  await fs.writeFile(file, Buffer.from(source, "base64"));
-  return shell.openPath(file);
+  const buffer = Buffer.from(source, "base64");
+  await fs.writeFile(file, buffer);
+  return { file, buffer, account };
+}
+
+// 연결 프로그램이 열지 못하면(연결된 프로그램 없음 등) Windows의 "연결 프로그램 선택" 창을 띄운다
+function chooseProgram(file) {
+  require("node:child_process").spawn("rundll32.exe", ["shell32.dll,OpenAs_RunDLL", file], { detached: true, stdio: "ignore" }).unref();
+}
+
+async function openWithDefault(file) {
+  const error = await shell.openPath(file);
+  if (error) chooseProgram(file);
+  return error;
+}
+
+// 웹메일 주소: Gmail은 그 메일로 바로, 나머지는 받은편지함으로 연다
+function webmailUrl(account, messageId) {
+  const preset = account?.preset || "";
+  const host = String(account?.host || "").toLowerCase();
+  if (preset === "gmail" || host.endsWith("gmail.com")) {
+    return messageId ? `https://mail.google.com/mail/u/0/#search/rfc822msgid%3A${encodeURIComponent(messageId.replace(/^<|>$/g, ""))}` : "https://mail.google.com/";
+  }
+  if (preset === "naver" || host.endsWith("naver.com")) return "https://mail.naver.com/";
+  if (preset === "daum" || host.endsWith("daum.net") || host.endsWith("kakao.com")) return "https://mail.daum.net/";
+  if (preset === "outlook" || host.includes("outlook") || host.includes("office365")) return host.includes("office365") ? "https://outlook.office.com/mail/" : "https://outlook.live.com/mail/";
+  return "";
+}
+
+// 메일 열기 (이전 방식): 기본 메일 프로그램으로 바로 연다
+ipcMain.handle("mail:open", async (_, mailUri) => openWithDefault((await fetchMailFile(mailUri)).file));
+
+// 메일 보기: FindInside 안에서 바로 보여 준다. 연결 프로그램(예: 새 Outlook)이 열지 못해도 내용을 볼 수 있다.
+// ref: { uri } (메일 계정의 메일) | { path } (PC의 .eml·.msg 파일)
+ipcMain.handle("mail:view", async (_, ref) => {
+  const { parseMail } = require("./mail");
+  let file;
+  let buffer;
+  let account = null;
+  if (ref?.uri) ({ file, buffer, account } = await fetchMailFile(ref.uri));
+  else {
+    file = String(ref?.path || "");
+    buffer = await fs.readFile(file);
+  }
+  const extension = path.extname(file).slice(1).toLowerCase() === "msg" ? "msg" : "eml";
+  const mail = await parseMail(buffer, extension);
+  const messageId = extension === "eml" ? /^message-id:\s*(<[^>\r\n]+>)/im.exec(buffer.subarray(0, 65536).toString("latin1"))?.[1] || "" : "";
+  return {
+    subject: mail.subject, from: mail.from, to: mail.to, cc: mail.cc, date: mail.date,
+    body: String(mail.body || "").slice(0, 300_000),
+    attachments: await saveAttachments(file, mail.attachments || []),
+    file,
+    webmail: webmailUrl(account, messageId)
+  };
+});
+
+// 첨부파일을 임시 폴더(메일마다 따로)에 풀어 두고 { name, size, path }로 돌려준다. 열기·저장은 이 파일로 한다.
+// 내용이 없는 첨부(MSG 안에 든 메일 등)는 path 없이 이름만 돌려준다.
+async function saveAttachments(mailFile, attachments) {
+  const dir = path.join(os.tmpdir(), "FindInside-mail", "files", crypto.createHash("sha1").update(mailFile).digest("hex").slice(0, 16));
+  await fs.mkdir(dir, { recursive: true });
+  const used = new Set();
+  const result = [];
+  for (const attachment of attachments) {
+    const name = String(attachment.name || "첨부 파일");
+    if (!attachment.content) {
+      result.push({ name, size: 0, path: "" });
+      continue;
+    }
+    // Windows 파일 이름에 쓸 수 없는 글자를 바꾸고, 같은 이름은 (2), (3)을 붙인다
+    const safe = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "").slice(0, 150) || "첨부 파일";
+    const { name: base, ext } = path.parse(safe);
+    let candidate = safe;
+    for (let n = 2; used.has(candidate.toLowerCase()); n += 1) candidate = `${base} (${n})${ext}`;
+    used.add(candidate.toLowerCase());
+    const target = path.join(dir, candidate);
+    await fs.writeFile(target, attachment.content);
+    result.push({ name, size: attachment.content.length, path: target });
+  }
+  return result;
+}
+
+// 첨부 저장: 저장 위치를 물어 복사한다 (기본은 다운로드 폴더)
+ipcMain.handle("mail:saveAttachment", async (_, source, name) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(window, { defaultPath: path.join(app.getPath("downloads"), String(name || path.basename(source))) });
+  if (canceled || !filePath) return "";
+  await fs.copyFile(String(source), filePath);
+  return filePath;
+});
+
+ipcMain.handle("mail:openFile", (_, file, how) => {
+  if (how === "choose") return chooseProgram(String(file));
+  return openWithDefault(String(file));
+});
+
+ipcMain.handle("ui:openExternal", (_, url) => {
+  if (/^https:\/\//.test(String(url))) return shell.openExternal(String(url));
 });
 
 ipcMain.handle("excludes:set", async (_, excludedPaths) => {
@@ -537,7 +643,7 @@ let indexing = null;
 function runIndexing(job) {
   indexing ||= job()
     .then((summary) => {
-      window?.webContents.send("index:done", summary);
+      sendToWindow("index:done", summary);
       return summary;
     })
     .finally(() => { indexing = null; });
@@ -591,9 +697,9 @@ function startPreciseOcr(images) {
   const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "ocr-precise" } });
   preciseWorker = worker;
   worker.on("message", (message) => {
-    if (message.type === "progress") window?.webContents.send("index:progress", { phase: "ocr-precise", ...message.progress });
+    if (message.type === "progress") sendToWindow("index:progress", { phase: "ocr-precise", ...message.progress });
     else if (message.type === "done" || message.type === "error") {
-      window?.webContents.send("index:progress", { phase: "ocr-precise", done: targets.length, total: targets.length, finished: true, error: message.message });
+      sendToWindow("index:progress", { phase: "ocr-precise", done: targets.length, total: targets.length, finished: true, error: message.message });
       worker.terminate();
     }
   });
@@ -608,9 +714,9 @@ function startOcr(targets) {
   const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "images" } });
   ocrWorker = worker;
   worker.on("message", (message) => {
-    if (message.type === "progress") window?.webContents.send("index:progress", { phase: "ocr", ...message.progress });
+    if (message.type === "progress") sendToWindow("index:progress", { phase: "ocr", ...message.progress });
     else if (message.type === "done" || message.type === "error") {
-      window?.webContents.send("index:progress", { phase: "ocr", done: targets.length, total: targets.length, finished: true, error: message.message });
+      sendToWindow("index:progress", { phase: "ocr", done: targets.length, total: targets.length, finished: true, error: message.message });
       worker.terminate();
     }
   });
@@ -625,7 +731,7 @@ function indexContentInWorker({ documents: targets, images }) {
     const worker = new Worker(path.join(__dirname, "contentWorker.js"), { workerData: { dbPath: contentDbPath(), group: "documents" } });
     worker.on("message", (message) => {
       if (message.type === "progress") {
-        window?.webContents.send("index:progress", { phase: "content", ...message.progress });
+        sendToWindow("index:progress", { phase: "content", ...message.progress });
       } else if (message.type === "done") {
         resolve(message.summary);
         worker.terminate();
@@ -748,7 +854,7 @@ function runDeltaContent() {
   const finish = () => {
     deltaWorker?.terminate();
     deltaWorker = null;
-    window?.webContents.send("index:changed", { count: batch.length });
+    sendToWindow("index:changed", { count: batch.length });
     runDeltaContent();
   };
   deltaWorker.on("message", (message) => { if (message.type === "done" || message.type === "error") finish(); });
@@ -764,7 +870,7 @@ async function rebuildIndex() {
   await searchReady;
   const result = await indexRoots(settings.roots, {
     excludedPaths: settings.excludedPaths,
-    onProgress: (progress) => window?.webContents.send("index:progress", progress)
+    onProgress: (progress) => sendToWindow("index:progress", progress)
   });
   // 색인 파일에는 예전 버전과 호환되도록 설정도 함께 적는다. 전체 색인이 변경분을 모두 담으므로 변경분은 비운다.
   await fs.writeFile(indexFile(), JSON.stringify({ ...settings, ...result }), "utf8");
@@ -785,9 +891,41 @@ ipcMain.handle("search:run", async (_, query, filters) => {
 ipcMain.handle("item:open", (_, targetPath) => shell.openPath(targetPath));
 ipcMain.handle("item:show", (_, targetPath) => shell.showItemInFolder(targetPath));
 // 문서 안 위치로 바로 갈 수 없으므로, 일치한 문구를 복사해 두고 문서를 연다 (문서에서 Ctrl+F → Ctrl+V).
-ipcMain.handle("item:openAt", (_, targetPath, phrase) => {
+// 일치한 곳을 누르면 그 위치로 연다. 반환값 mode:
+// moved(프로그램에서 그 쪽·슬라이드·칸으로 이동) | viewer(앱 안 PDF 보기) | preview(앱 안 텍스트 미리보기) | mail(앱 안 메일 보기) | copied(파일만 열고 문구 복사)
+const TEXT_PREVIEW_EXTENSIONS = new Set(["txt", "csv", "md", "log"]);
+ipcMain.handle("item:openAt", async (_, targetPath, phrase, target = {}, term = "") => {
   if (phrase) clipboard.writeText(String(phrase));
-  return shell.openPath(targetPath);
+  const extension = path.extname(targetPath).slice(1).toLowerCase();
+  if (TEXT_PREVIEW_EXTENSIONS.has(extension)) return { mode: "preview" };
+  if (MAIL_EXTENSIONS.has(extension)) return { mode: "mail" };
+  if (target && !target.attachment && await openAt(targetPath, target, phrase, term)) return { mode: "moved" };
+  if (extension === "pdf" && target?.page) {
+    openPdfViewer(targetPath, target.page);
+    return { mode: "viewer" };
+  }
+  await openWithDefault(targetPath);
+  return { mode: "copied" };
+});
+
+// 검색 결과에 한글 문서가 보이면 숨긴 한글을 미리 띄워, 누르면 바로 열리게 한다
+ipcMain.handle("goto:warm", () => warmHwp());
+
+// 기본 PDF 프로그램이 쪽을 받지 못하면 Electron(Chromium) PDF 보기로 그 쪽을 연다
+function openPdfViewer(file, page) {
+  const viewer = new BrowserWindow({
+    width: 1000, height: 820, title: path.basename(file), icon: path.join(__dirname, "renderer", "icon.png"), autoHideMenuBar: true,
+    webPreferences: { plugins: true, sandbox: true, contextIsolation: true, nodeIntegration: false }
+  });
+  viewer.setMenuBarVisibility(false);
+  viewer.loadURL(`${pathToFileURL(file).href}#page=${Number(page) || 1}`);
+}
+
+// 텍스트 미리보기용 본문 (메모장은 특정 줄로 열 수 없어 앱 안에서 그 줄을 보여 준다)
+ipcMain.handle("item:readText", async (_, targetPath) => {
+  const stat = await fs.stat(targetPath);
+  if (stat.size > 20 * 1024 * 1024) throw new Error("파일이 너무 커서 미리 볼 수 없습니다");
+  return decodeText(await fs.readFile(targetPath));
 });
 ipcMain.handle("menu:action", (_, action) => {
   const webContents = window?.webContents;
