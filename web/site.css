@@ -88,7 +88,7 @@ a { color: var(--accent); }
 .cases b { color: var(--accent); }
 
 /* 기능 */
-.features { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 24px; }
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
 .features article { padding: 24px 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--soft); }
 .ico { width: 44px; height: 44px; display: grid; place-items: center; margin-bottom: 14px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 .features h3 { margin: 0 0 8px; font-size: 18px; }
@@ -176,3 +176,4 @@ a { color: var(--accent); }
 .related { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 0; padding: 0; list-style: none; }
 .related a { display: inline-block; padding: 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-weight: 700; text-decoration: none; }
 .related a:hover { border-color: var(--accent); }
+.related-title { margin: 40px 0 0; font-size: 18px; color: var(--text); }
