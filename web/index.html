@@ -23,7 +23,7 @@
       <p class="eyebrow">윈도우 PC용 문서 내용 검색 프로그램</p>
       <h1>그 자료,<br /><em>어디 있었더라?</em></h1>
       <p class="answer">내 PC 문서와 메일 속 내용까지, 한 번에 검색하세요.</p>
-      <p class="sub">파일 이름이 기억나지 않아도 괜찮습니다. 한글·엑셀·PDF 문서 <strong>안에 적힌 글자</strong>, 캡처 이미지 속 글자, 회사 메일과 첨부파일까지 검색해서 <strong>몇 쪽, 어느 셀</strong>에 있는지 바로 보여 줍니다.</p>
+      <p class="sub">파일 이름이 기억나지 않아도 괜찮습니다. 한글·엑셀·PDF 문서 <strong>안에 적힌 글자</strong>, 캡처 이미지 속 글자, 회사 메일과 첨부파일까지 검색해서 <strong>몇 쪽, 어느 셀</strong>에 있는지 보여 주고, 누르면 그 쪽으로 바로 열립니다.</p>
       <div class="cta">
         {{DOWNLOAD_BUTTON}}
         {{BUY_BUTTON_GHOST}}
@@ -71,6 +71,7 @@
           <tr><td>캡처·스캔 이미지 속 글자</td><td class="no">안 됨</td><td class="us yes">됨</td></tr>
           <tr><td>웹메일·회사 메일(IMAP) 본문과 첨부파일 내용</td><td class="no">안 됨</td><td class="us yes">됨 · 첨부 몇 쪽인지 표시</td></tr>
           <tr><td>한자로 적힌 이름 (金英洙 → 김영수)</td><td class="no">안 됨</td><td class="us yes">됨</td></tr>
+          <tr><td>찾은 문장이 있는 쪽으로 바로 열기</td><td class="no">안 됨 (파일만 열림)</td><td class="us yes">됨 · 한글·워드·엑셀·파워포인트·PDF</td></tr>
         </tbody>
       </table>
     </div>
@@ -107,12 +108,14 @@
         <h3>메일과 첨부파일</h3>
         <p>회사 메일(IMAP·POP3)을 연결하면 제목, 보낸 사람, 본문, 첨부 문서 내용까지 검색합니다. 받은편지함·보낸 편지함별로 좁혀 볼 수 있고, 메일은 앱 안에서 바로 보며 첨부 문서도 찾은 쪽으로 바로 열립니다.</p>
       </article>
-      <article>
-        <div class="ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
-        <h3>알아서 최신 상태로</h3>
-        <p>새로 만들거나 고친 파일은 자동으로 반영합니다. 결과는 관련도순·최신순으로 보고, 폴더와 확장자로 좁힐 수 있습니다.</p>
-      </article>
     </div>
+    <h3 class="related-title">형식별로 자세히 보기</h3>
+    <ul class="related">
+      <li><a href="hwp-search.html">한글(HWP) 내용 검색 →</a></li>
+      <li><a href="pdf-search.html">PDF 내용 검색 →</a></li>
+      <li><a href="excel-search.html">엑셀 내용 검색 →</a></li>
+      <li><a href="ocr-search.html">이미지 글자(OCR) 검색 →</a></li>
+    </ul>
   </div>
 </section>
 
@@ -131,7 +134,7 @@
       </li>
       <li>
         <b>{{TRIAL_DAYS}}일 무료로 사용</b>
-        <span>모든 기능을 그대로 씁니다. 화면 위에 "체험판 · N일 남음"이 보입니다.</span>
+        <span>모든 기능을 그대로 씁니다. 검색 결과의 "15쪽" 같은 줄을 누르면 문서가 그 쪽으로 바로 열립니다. 화면 위에 "체험판 · N일 남음"이 보입니다.</span>
       </li>
       <li>
         <b>구매하기</b>
@@ -167,6 +170,7 @@
       <li>파일·메일 내용을 인터넷으로 보내지 않습니다. 클라우드 업로드가 없습니다.</li>
       <li>사용 기록 수집, 광고, 자동 오류 전송이 없습니다.</li>
       <li>메일 비밀번호는 윈도우 암호화(DPAPI)로 이 PC에만 저장합니다.</li>
+      <li>메일을 볼 때 메일 속 바깥 이미지를 불러오지 않아, 메일을 열었는지 보낸 쪽에 알려지지 않습니다.</li>
       <li>파일은 읽기만 하고 고치거나 지우지 않습니다. 메일도 서버에서 지우지 않습니다.</li>
     </ul>
   </div>
@@ -195,7 +199,8 @@
     <h2>자주 묻는 질문</h2>
     <details><summary>어떤 윈도우에서 쓸 수 있나요?</summary><p>Windows 10, Windows 11 (64비트)에서 쓸 수 있습니다. 이미지 글자 읽기는 윈도우에 들어 있는 한국어 글자 인식 기능을 씁니다.</p></details>
     <details><summary>처음 설치하면 바로 검색되나요?</summary><p>검색할 폴더를 고르고 "색인 시작"을 누르면 파일 이름은 몇 분 안에 검색됩니다. 문서 내용과 이미지 글자는 뒤에서 차례로 읽고, 읽은 파일부터 바로 검색됩니다.</p></details>
-    <details><summary>회사 메일도 연결되나요?</summary><p>IMAP 또는 POP3를 지원하는 메일(메일플러그, 네이버, 다음, Gmail 등)을 연결할 수 있습니다. 서비스에 따라 앱 비밀번호가 필요합니다. Microsoft 365처럼 IMAP이 막힌 회사 메일은 지금은 연결할 수 없습니다.</p></details>
+    <details><summary>회사 메일도 연결되나요?</summary><p>IMAP 또는 POP3를 지원하는 메일(메일플러그, 네이버, 다음, Gmail 등)을 연결할 수 있습니다. 서비스에 따라 앱 비밀번호가 필요합니다. Microsoft 365처럼 IMAP이 막힌 회사 메일은 지금은 연결할 수 없습니다. 찾은 메일은 앱 안에서 바로 보고, 첨부파일도 열거나 저장할 수 있습니다.</p></details>
+    <details><summary>검색 결과를 누르면 어떻게 열리나요?</summary><p>한글·워드·엑셀·파워포인트 문서는 PC에 설치된 그 프로그램에서 찾은 쪽·셀·슬라이드로 바로 열리고 찾은 문구가 선택됩니다. PDF는 Adobe Acrobat(Reader)이 있으면 그 쪽으로 열리고, 없으면 FindInside 안의 PDF 보기로 그 쪽을 엽니다. 텍스트 파일은 앱 안 미리보기에서 그 줄을 보여 줍니다. 해당 프로그램이 없으면 기본 프로그램으로 파일을 열고 찾을 문구를 복사해 두니 Ctrl+F → Ctrl+V로 찾으면 됩니다.</p></details>
     <details><summary>PC가 느려지지 않나요?</summary><p>내용 읽기는 낮은 우선순위로 뒤에서 하고, 한 번 읽은 파일은 바뀌지 않는 한 다시 읽지 않습니다.</p></details>
     <details><summary>라이선스 키는 어디에 넣나요?</summary><p>앱 위쪽의 "라이선스 키 입력" 버튼(체험 기간이 끝났으면 가운데 안내의 버튼)을 누르거나, 메뉴 도움말 → 라이선스를 엽니다. 구매 확인 메일의 키를 붙여 넣고 활성화를 누르세요. 인터넷이 연결되어 있어야 합니다.</p></details>
     <details><summary>설치 파일(.exe)을 받을 때 경고가 떠요.</summary><p>Microsoft Store에서 받으면 경고 없이 설치됩니다. 설치 파일을 직접 받으면 새로 나온 프로그램이라 Windows와 브라우저가 한 번 확인하는 창입니다. Edge에서 "Find_Setup.exe은(는) 일반적으로 다운로드되지 않습니다"가 뜨면 오른쪽 ⋯ → 유지 → 그래도 계속을 누르세요. 설치 파일을 실행할 때 "Windows의 PC 보호"(PC를 보호했습니다) 창이 뜨면 추가 정보 → 실행을 누르면 설치됩니다.</p></details>
@@ -208,6 +213,7 @@
 
 <footer class="foot">
   <div class="wrap">
+    <p><a href="hwp-search.html">한글 내용 검색</a> · <a href="pdf-search.html">PDF 내용 검색</a> · <a href="excel-search.html">엑셀 내용 검색</a> · <a href="ocr-search.html">이미지 글자 검색</a></p>
     <p><a href="terms.html">이용약관</a> · <a href="privacy.html">개인정보처리방침</a> · <a href="third-party-notices.txt">오픈소스 라이선스</a></p>
     <p>{{CONTACT}}</p>
     <p class="small">© 2026 {{OWNER}}. 판매 대행: Lemon Squeezy (Merchant of Record).</p>
