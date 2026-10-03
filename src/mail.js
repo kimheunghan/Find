@@ -25,9 +25,15 @@ async function parseEml(buffer) {
     cc: addressText(mail.cc),
     date: mail.date ? mail.date.toISOString() : "",
     body: mail.text || htmlToText(mail.html),
+    // 메일 보기에서 원래 모양(문단·표·본문 이미지)으로 보여 주기 위한 HTML. 색인에는 쓰지 않는다.
+    html: typeof mail.html === "string" ? mail.html : "",
     attachments: (mail.attachments || []).map((attachment) => ({
       name: attachment.filename || (attachment.contentType === "message/rfc822" ? "첨부 메일.eml" : "첨부 파일"),
-      content: attachment.content
+      content: attachment.content,
+      cid: attachment.cid || "", // 본문 HTML의 <img src="cid:..."> 이미지
+      // 본문에 그려지는 이미지 (mailparser가 HTML 안 cid를 data: 주소로 바꿔 둔다)
+      inline: Boolean(attachment.related || (attachment.cid && attachment.contentDisposition === "inline")),
+      contentType: attachment.contentType || ""
     }))
   };
 }
@@ -51,6 +57,7 @@ function msgFieldsToMail(reader, fields) {
     cc: recipients("cc"),
     date: time ? new Date(time).toISOString() : "",
     body: fields.body || htmlToText(fields.bodyHtml),
+    html: typeof fields.bodyHtml === "string" ? fields.bodyHtml : "",
     attachments: (fields.attachments || []).map((attachment) => {
       if (attachment.innerMsgContent && attachment.innerMsgContentFields) {
         return { name: `${attachment.name || attachment.fileName || "첨부 메일"}.msg`, mail: msgFieldsToMail(reader, attachment.innerMsgContentFields) };

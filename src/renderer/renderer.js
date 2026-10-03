@@ -899,6 +899,57 @@ async function openTextPreview(item, lineNumber, terms) {
   requestAnimationFrame(() => (current || viewerBody).scrollIntoView({ block: "center" }));
 }
 
+// HTML 메일은 원래 모양(문단·줄바꿈·표·본문 이미지)으로 보여 준다.
+// 스크립트는 막고(sandbox에 allow-scripts 없음), 바깥 주소(추적 이미지 등)는 불러오지 않는다(CSP). 본문 이미지는 main이 data: 주소로 바꿔 준다.
+// allow-same-origin은 검색어 강조와 높이 맞춤을 위해 이 창에서 문서에 접근하려고 둔다 (스크립트가 없으므로 메일 쪽에서는 아무것도 실행되지 않는다).
+function renderMailHtml(html, terms) {
+  const frame = document.createElement("iframe");
+  frame.className = "mailFrame";
+  frame.setAttribute("sandbox", "allow-same-origin");
+  frame.setAttribute("referrerpolicy", "no-referrer");
+  frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:">
+<style>html,body{margin:0;padding:10px 12px;background:#fff;color:#1b1f2a;font:14px/1.6 "Malgun Gothic",sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}mark{background:#ffd666;color:inherit}</style>
+</head><body>${html}</body></html>`;
+  frame.addEventListener("load", () => {
+    const doc = frame.contentDocument;
+    if (!doc?.body) return;
+    highlightInDocument(doc, terms);
+    // 바깥 주소 이미지는 불러오지 않으므로(추적 방지) 깨진 그림 대신 감춘다
+    for (const image of doc.images) if (!image.src.startsWith("data:")) image.style.display = "none";
+    frame.style.height = `${Math.max(doc.documentElement.scrollHeight, 80) + 4}px`;
+    const first = doc.querySelector("mark");
+    if (first) viewerBody.scrollTop = Math.max(frame.offsetTop + first.getBoundingClientRect().top - viewerBody.clientHeight / 2, 0);
+  });
+  return frame;
+}
+
+// 문서 안 글자 마디마다 검색어를 찾아 <mark>로 감싼다 (스크립트·스타일 안은 건너뛴다)
+function highlightInDocument(doc, terms) {
+  if (!terms.length) return;
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => (/^(SCRIPT|STYLE|TITLE)$/.test(node.parentNode?.nodeName) || !node.nodeValue.trim() ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT)
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    const ranges = FindHighlight.findRanges(text, terms);
+    if (!ranges.length) continue;
+    const fragment = doc.createDocumentFragment();
+    let cursor = 0;
+    for (const [start, end] of ranges) {
+      if (start > cursor) fragment.append(text.slice(cursor, start));
+      const mark = doc.createElement("mark");
+      mark.textContent = text.slice(start, end);
+      fragment.append(mark);
+      cursor = end;
+    }
+    if (cursor < text.length) fragment.append(text.slice(cursor));
+    node.replaceWith(fragment);
+  }
+}
+
 const fileSize = (bytes) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`;
 
 function renderAttachments(attachments, terms, focusName = "") {
@@ -947,8 +998,8 @@ async function openMailItem(item, terms = FindHighlight.queryTerms(queryEl.value
   showHint(item.kind === "mail" ? "메일 서버에서 메일을 받는 중…" : "메일 파일을 읽는 중…");
   try {
     const mail = await window.findInside.viewMail(item.kind === "mail" ? { uri: item.path } : { path: item.path });
-    const body = document.createElement("div");
-    renderHighlighted(body, mail.body || "(본문 없음)", terms);
+    const body = mail.html ? renderMailHtml(mail.html, terms) : document.createElement("div");
+    if (!mail.html) renderHighlighted(body, mail.body || "(본문 없음)", terms);
     // 첨부는 본문 위에 두어 본문이 길어도 바로 보이게 하고, 하나씩 열기·저장할 수 있게 한다
     const nodes = mail.attachments.length ? [renderAttachments(mail.attachments, terms, focusAttachment), body] : [body];
     viewerBody.replaceChildren(...nodes);
