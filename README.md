@@ -4,7 +4,7 @@ FindInside는 Windows PC의 파일, 문서 속 내용, 이미지 속 글자, 연
 
 파일 이름이 기억나지 않아도 문서 안의 문장, 숫자, 사람 이름으로 자료를 찾고, 찾은 곳이 몇 쪽·어느 셀·어느 슬라이드인지 보여 줍니다. 색인과 검색은 모두 사용자 PC 안에서 합니다.
 
-- 판매 페이지: https://findinside.netlify.app
+- 판매 페이지: https://findinside.pages.dev
 - 현재 버전: 1.0.3 — Microsoft Store: https://apps.microsoft.com/detail/9MSTC81374SK
 
 ## 지금 되는 것 (1.0.0)

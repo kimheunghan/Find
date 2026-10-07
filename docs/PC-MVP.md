@@ -31,7 +31,7 @@
 **6단계 — 판매 준비**
 - 14일 체험, Lemon Squeezy 라이선스 키(활성화·확인·해제), 앱 아이콘
 - 이용약관·개인정보처리방침·오픈소스 고지(`legal/` → `src/legal/`, `site/`)
-- 판매 페이지(`web/` → `site/`, https://findinside.netlify.app)
+- 판매 페이지(`web/` → `site/`, https://findinside.pages.dev — Cloudflare Pages. 옛 주소 findinside.netlify.app은 넘겨줄 예정)
 - 테스트 모드에서 시험 구매 → 받은 키로 설치된 앱 활성화까지 확인 (PC 1/2 등록)
 - 체험판 설치 파일 배포: 공개 저장소 kimheunghan/findinside-download 릴리스 (`releases/latest/download/Find_Setup.exe`)
 

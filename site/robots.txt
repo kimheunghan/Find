@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://findinside.netlify.app/sitemap.xml
+Sitemap: https://findinside.pages.dev/sitemap.xml
