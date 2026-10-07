@@ -22,11 +22,16 @@ const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
 const output = path.join("release", `build-${stamp}`);
 execFileSync(process.execPath, [require.resolve("electron-builder/cli.js"), "--win", "nsis", "--x64", "--publish", "never", `--config.directories.output=${output}`], { cwd: root, stdio: "inherit" });
 
-const built = path.join(root, output, "Find_Setup.exe");
+// 받은 사람이 몇 번 버전인지 파일 이름만 보고 알도록 버전을 붙인다 (Find_Setup_v1.0.3.exe).
+// 예전 이름(Find_Setup.exe)으로도 함께 두어, 그 이름을 부르는 옛 링크가 깨지지 않게 한다.
+const { version } = require("../package.json");
+const versioned = `Find_Setup_v${version}.exe`;
+const built = path.join(root, output, versioned);
 if (!fs.existsSync(built)) throw new Error(`설치 파일이 만들어지지 않았습니다: ${built}`);
+fs.copyFileSync(built, path.join(root, "release", versioned));
 fs.copyFileSync(built, path.join(root, "release", "Find_Setup.exe"));
 if (missing.length) console.warn(`⚠ 판매용이 아닌 시험 빌드입니다. src/product.json에 비어 있는 값: ${missing.length}개`);
-console.log(`설치 파일: ${path.join("release", "Find_Setup.exe")} (${(fs.statSync(built).size / 1048576).toFixed(0)}MB, ${new Date().toLocaleString("ko-KR")})`);
+console.log(`설치 파일: ${path.join("release", versioned)} (예전 이름 Find_Setup.exe로도 복사) (${(fs.statSync(built).size / 1048576).toFixed(0)}MB, ${new Date().toLocaleString("ko-KR")})`);
 
 // 이전 빌드 폴더는 지울 수 있으면 지운다 (잠겨 있으면 다음에)
 for (const name of fs.readdirSync(path.join(root, "release"))) {

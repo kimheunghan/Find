@@ -60,7 +60,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "FindInside",
-      "artifactName": "Find_Setup.${ext}",
+      "artifactName": "Find_Setup_v${version}.${ext}",
       "installerLanguages": [
         "ko_KR"
       ],

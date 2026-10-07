@@ -20,7 +20,11 @@ const need = (value, label) => {
 
 const email = need(product.supportEmail, "supportEmail (문의 이메일)");
 const checkout = need(product.lemonSqueezy.checkoutUrl, "lemonSqueezy.checkoutUrl (구매 링크)");
-const download = need(product.downloadUrl, "downloadUrl (체험판 내려받기 링크)");
+// 설치 파일 이름에는 버전이 붙는다 (Find_Setup_v1.0.3.exe). 버전은 package.json에서 가져와
+// ${version} 자리에 끼우므로, 새 버전을 낼 때 판매 페이지를 손으로 고칠 일이 없다.
+const { version } = require("../package.json");
+const setupFile = `Find_Setup_v${version}.exe`;
+const download = need(product.downloadUrl, "downloadUrl (체험판 내려받기 링크)").replace(/\$\{version\}/g, version);
 need(product.price, "price (가격)");
 need(product.website, "website (판매 페이지 주소)");
 need(product.lemonSqueezy.storeId, "lemonSqueezy.storeId (다른 가게 키 막기)");
@@ -40,6 +44,7 @@ const values = {
   DOWNLOAD_BUTTON: product.storeUrl ? `<a class="button primary" href="${escape(product.storeUrl)}">Microsoft Store에서 무료 체험</a>` : download ? `<a class="button primary" href="${escape(download)}">무료 체험판 내려받기</a>` : "",
   STORE_LINK: product.storeUrl ? escape(product.storeUrl) : (download ? escape(download) : "#"),
   DOWNLOAD_LINK: download ? escape(download) : "#",
+  SETUP_FILE: escape(setupFile),
   CHECKOUT_LINK: checkout ? escape(checkout) : "#pricing"
 };
 const fill = (text) => text.replace(/\{\{([A-Z_]+)\}\}/g, (all, key) => {
