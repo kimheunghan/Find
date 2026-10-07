@@ -1,6 +1,7 @@
 "use strict";
 
-// Microsoft Store용 패키지(MSIX/.appx) 빌드: release/store-<시각>/FindInside <버전>.appx
+// Microsoft Store용 패키지(MSIX/.appx) 빌드: release/store-<시각>/FindInside <버전>.appx → release/FindInside_Store_v<버전>.appx
+// (파일 이름에 버전을 넣어 Partner Center에 올릴 때 어느 버전인지 바로 보이게 한다)
 // 스토어가 심사 뒤 직접 서명하므로 코드 서명 인증서가 필요 없다.
 // 앱 식별 값(Partner Center → 제품 관리 → 제품 ID)은 src/store.json에 넣는다. 비어 있으면 빌드하지 않는다.
 const { execFileSync } = require("node:child_process");
@@ -37,6 +38,7 @@ execFileSync(process.execPath, [
 
 const built = fs.readdirSync(path.join(root, output)).find((name) => name.endsWith(".appx"));
 if (!built) throw new Error(`스토어 패키지가 만들어지지 않았습니다: ${output}`);
-const target = path.join(root, "release", "FindInside_Store.appx");
+const { version } = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const target = path.join(root, "release", `FindInside_Store_v${version}.appx`);
 fs.copyFileSync(path.join(root, output, built), target);
 console.log(`스토어 패키지: ${path.relative(root, target)} (${(fs.statSync(target).size / 1048576).toFixed(0)}MB)`);

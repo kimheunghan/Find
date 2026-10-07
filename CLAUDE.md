@@ -23,7 +23,7 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 2. `npm test` (75개) — 그리고 `npm run check`
 3. `npm run dist` → `release\Find_Setup_v<버전>.exe` (108MB, 홈페이지용). 같은 파일이
    `release\Find_Setup.exe`로도 복사된다 — **둘 다 필요하다**(아래 참고).
-   `npm run dist:store` → `release\FindInside_Store.appx` (161MB, 스토어용)
+   `npm run dist:store` → `release\FindInside_Store_v<버전>.appx` (161MB, 스토어용)
 4. 커밋·푸시한 뒤 GitHub 릴리스에 **두 파일을 다 올린다**:
    ```
    & "C:\Program Files\GitHub CLI\gh.exe" release create v<버전> `
@@ -31,7 +31,7 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
      -R kimheunghan/findinside-download --title "FindInside <버전>" --notes "바뀐 점"
    ```
    올린 뒤 `gh api repos/kimheunghan/findinside-download/releases/latest --jq .tag_name`으로 확인한다.
-5. **(사용자)** Partner Center에 `release\FindInside_Store.appx`를 새 제출로 올린다. 브라우저 작업이라 내가 못 한다.
+5. **(사용자)** Partner Center에 `release\FindInside_Store_v<버전>.appx`를 새 제출로 올린다. 브라우저 작업이라 내가 못 한다.
 
 ### 설치 파일을 두 이름으로 올리는 이유 — 빠뜨리지 말 것
 
