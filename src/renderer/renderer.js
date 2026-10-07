@@ -402,7 +402,12 @@ function describeSearch(query) {
   return `“${query}” · ${parts.join(" · ")}`;
 }
 
-async function runSearch() {
+// quiet: 색인 진행·폴더 감시에 따른 자동 새로 고침. "검색 중"을 띄우지 않고, 결과가 실제로 달라졌을 때만 다시 그린다.
+// (매번 표시를 띄우고 목록을 새로 그리면 색인 중에 화면이 몇 초마다 깜빡인다)
+let lastResultKey = "";
+const resultKey = (query, items, total) => `${query}\n${total}\n${items.map((item) => `${item.path}\t${item.time || ""}\t${item.hits?.length || 0}`).join("\n")}`;
+
+async function runSearch({ quiet = false } = {}) {
   const query = queryEl.value.trim();
   const unindexed = filters.scopes.filter((scope) => !isIndexedScope(scope));
   hintEl.classList.toggle("warn", unindexed.length > 0);
@@ -418,7 +423,7 @@ async function runSearch() {
   let result = { items: [], total: 0 };
   let failed = null;
   if (query) {
-    const stopLoading = showLoading(sequence);
+    const stopLoading = quiet ? () => {} : showLoading(sequence);
     searchInFlight = true;
     try {
       result = await window.findInside.search(query, { ...filters, source, sort: sortEl.value, mailFolders: source === "mail" ? selectedMailFolders : [] });
@@ -440,11 +445,17 @@ async function runSearch() {
     refreshLicense();
     return;
   }
+  // 자동 새로 고침이 실패하면 보던 결과를 그대로 둔다
+  if (failed && quiet) return;
   if (failed) {
+    lastResultKey = "";
     showSearchFailure(String(failed.message || failed).replace(/^Error invoking remote method '[^']+': (Error: )?/, ""));
     resultsEl.dataset.query = query;
     return;
   }
+  const key = resultKey(query, items, total);
+  if (quiet && key === lastResultKey) return;
+  lastResultKey = key;
   renderResults(items, total);
   renderSourceCounts(query ? result : null);
   resultsEl.dataset.query = query;
@@ -1285,11 +1296,11 @@ window.findInside.onMailProgress(async (progress) => {
   const label = account?.name || account?.email || "메일";
   work.mail = progress.finished ? null : { done: progress.done || 0, total: progress.total || 0 };
   refreshWorkHint();
-  if (progress.finished && queryEl.value.trim()) runSearch();
+  if (progress.finished && queryEl.value.trim()) runSearch({ quiet: true });
   else if (progress.total && queryEl.value.trim() && source !== "pc" && !searchInFlight && Date.now() - lastProgressSearch > 5000) {
     // 가져온 메일부터 검색되므로 진행 중에도 몇 초마다 결과를 새로 고친다
     lastProgressSearch = Date.now();
-    runSearch();
+    runSearch({ quiet: true });
   }
   if (progress.finished) {
     mailStatusEl.textContent = progress.error ? `${label}: 가져오기 실패 — ${progress.error}` : `${label}: 새 메일 ${progress.fetched.toLocaleString()}통 가져옴`;
@@ -1440,7 +1451,7 @@ function showIndexDone(result) {
   work.content = null;
   refreshWorkHint();
   statusEl.textContent = `${result.entryCount.toLocaleString()}개 항목 색인 완료 · 내용 추출 ${result.content.extracted.toLocaleString()}개(변경 없음 ${result.content.skipped.toLocaleString()}개) · 오류 ${(result.errorCount + result.content.errors).toLocaleString()}개`;
-  if (queryEl.value.trim()) runSearch();
+  if (queryEl.value.trim()) runSearch({ quiet: true });
 }
 
 let ocrStatus = "";
@@ -1453,7 +1464,7 @@ window.findInside.onIndexProgress((progress) => {
       : `${label} 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}`;
     work.ocr = progress.finished ? null : { done: progress.done, total: progress.total };
     refreshWorkHint();
-    if (progress.finished && queryEl.value.trim()) runSearch();
+    if (progress.finished && queryEl.value.trim()) runSearch({ quiet: true });
     const lines = statusEl.textContent.split("\n").filter((line) => !line.startsWith("이미지 OCR"));
     statusEl.textContent = [...lines, ocrStatus].join("\n");
     return;
@@ -1472,7 +1483,7 @@ window.findInside.onIndexProgress((progress) => {
   // 색인 중에도 검색어가 있으면 몇 초마다 결과를 새로 고쳐 새로 색인된 내용을 보여 준다.
   if (queryEl.value.trim() && !searchInFlight && Date.now() - lastProgressSearch > 5000) {
     lastProgressSearch = Date.now();
-    runSearch();
+    runSearch({ quiet: true });
   }
 });
 
@@ -1484,7 +1495,7 @@ window.findInside.onIndexChanged((change) => {
   // 새 파일이 자주 반영되면 결과가 계속 다시 그려져 클릭이 막힌다. 10초에 한 번 이하, 입력 중이 아닐 때만.
   if (!queryEl.value.trim() || searchInFlight || document.activeElement === queryEl || Date.now() - lastChangedSearch < 10_000) return;
   lastChangedSearch = Date.now();
-  runSearch();
+  runSearch({ quiet: true });
 });
 
 (async () => {

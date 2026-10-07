@@ -74,10 +74,12 @@ function friendly(error) {
 }
 
 // 산 제품의 키인지 확인한다 (같은 Lemon Squeezy의 다른 가게·다른 제품 키를 막음). 설정하지 않았으면 건너뛴다.
+// productId는 번호 하나 또는 여러 개: 테스트 모드 상품과 실제 판매(Live) 상품은 번호가 달라 둘 다 받는다.
 function checkProduct(meta, config) {
   const { storeId, productId } = config.lemonSqueezy || {};
   if (storeId && Number(meta?.store_id) !== Number(storeId)) return false;
-  if (productId && Number(meta?.product_id) !== Number(productId)) return false;
+  const productIds = [productId].flat().filter(Boolean).map(Number);
+  if (productIds.length && !productIds.includes(Number(meta?.product_id))) return false;
   return true;
 }
 

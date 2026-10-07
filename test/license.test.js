@@ -62,6 +62,19 @@ test("활성화: 다른 제품의 키는 거절하고 바로 해제한다", asyn
   assert.equal(server.calls[1].params.instance_id, "inst-9");
 });
 
+test("활성화: 상품 번호를 여러 개 두면(테스트·실제 판매 상품) 어느 쪽 키든 받고, 그 밖의 키는 거절한다", async () => {
+  const both = { ...config, lemonSqueezy: { storeId: 11, productId: [22, 33] } };
+  for (const productId of [22, 33]) {
+    const server = fakeServer(() => [200, { activated: true, instance: { id: "inst-1" }, meta: { ...meta, product_id: productId } }]);
+    const state = await license.activate(license.newState(), `KEY${productId}`, { fetchImpl: server.fetchImpl, config: both });
+    assert.equal(state.license.key, `KEY${productId}`);
+  }
+  const other = fakeServer((action) => action === "activate"
+    ? [200, { activated: true, instance: { id: "inst-9" }, meta: { ...meta, product_id: 999 } }]
+    : [200, { deactivated: true }]);
+  await assert.rejects(license.activate(license.newState(), "OTHER", { fetchImpl: other.fetchImpl, config: both }), /FindInside 라이선스 키가 아닙니다/);
+});
+
 test("인터넷 연결이 없으면 활성화 실패를 알리고 상태는 그대로", async () => {
   const fetchImpl = async () => { throw new TypeError("fetch failed"); };
   await assert.rejects(license.activate(license.newState(), "K", { fetchImpl, config }), /인터넷 연결/);
