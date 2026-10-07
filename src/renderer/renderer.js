@@ -405,6 +405,35 @@ function describeSearch(query) {
 // quiet: 색인 진행·폴더 감시에 따른 자동 새로 고침. "검색 중"을 띄우지 않고, 결과가 실제로 달라졌을 때만 다시 그린다.
 // (매번 표시를 띄우고 목록을 새로 그리면 색인 중에 화면이 몇 초마다 깜빡인다)
 let lastResultKey = "";
+// 자동 새로 고침 결과를 마우스가 결과 위에 있거나 메일 보기가 열려 있을 때 바로 그리면, 누르려던 칸이 바뀌어 다른 항목이 열린다.
+// 그럴 때는 결과를 들고 있다가 마우스가 결과 목록을 벗어나거나 메일 보기를 닫으면 그린다.
+let deferredResult = null;
+const userIsLooking = () => resultsEl.matches(":hover") || document.querySelector("#viewerDialog")?.open;
+
+function drawResult(query, items, total, result, key, { keepScroll = false } = {}) {
+  lastResultKey = key;
+  // 목록을 비웠다 채우면 페이지 높이가 잠깐 줄어 스크롤이 맨 위로 튄다. 자동 새로 고침은 보던 위치를 그대로 둔다.
+  const scrollers = keepScroll ? [document.scrollingElement, ...ancestors(resultsEl)].filter((el) => el && el.scrollTop > 0).map((el) => [el, el.scrollTop]) : [];
+  renderResults(items, total);
+  renderSourceCounts(query ? result : null);
+  resultsEl.dataset.query = query;
+  for (const [el, top] of scrollers) el.scrollTop = top;
+}
+
+function ancestors(element) {
+  const list = [];
+  for (let node = element.parentElement; node; node = node.parentElement) list.push(node);
+  return list;
+}
+
+function flushDeferredResult() {
+  if (!deferredResult || userIsLooking()) return;
+  const { query, items, total, result, key, sequence } = deferredResult;
+  deferredResult = null;
+  // 그사이 새 검색을 했거나 검색어가 바뀌었으면 버린다
+  if (sequence !== searchSequence || query !== queryEl.value.trim()) return;
+  drawResult(query, items, total, result, key, { keepScroll: true });
+}
 const resultKey = (query, items, total) => `${query}\n${total}\n${items.map((item) => `${item.path}\t${item.time || ""}\t${item.hits?.length || 0}`).join("\n")}`;
 
 async function runSearch({ quiet = false } = {}) {
@@ -454,12 +483,16 @@ async function runSearch({ quiet = false } = {}) {
     return;
   }
   const key = resultKey(query, items, total);
+  if (!quiet) deferredResult = null;
   if (quiet && key === lastResultKey) return;
-  lastResultKey = key;
-  renderResults(items, total);
-  renderSourceCounts(query ? result : null);
-  resultsEl.dataset.query = query;
+  if (quiet && userIsLooking()) {
+    deferredResult = { query, items, total, result, key, sequence };
+    return;
+  }
+  drawResult(query, items, total, result, key, { keepScroll: quiet });
 }
+
+resultsEl.addEventListener("mouseleave", flushDeferredResult);
 
 // ---- 검색 중 표시 ----
 // 0.2초 안에 끝나면 아무것도 보이지 않게 두고, 늦어지면 "검색 중"과 걸린 시간을 보여 준다.
@@ -852,6 +885,8 @@ async function openMailHit(item, hit, phrase, terms) {
 }
 
 const viewerDialog = document.querySelector("#viewerDialog");
+// 메일 보기를 닫으면 그동안 미뤄 둔 자동 새로 고침 결과를 그린다 (마우스가 결과 위에 있으면 벗어날 때)
+viewerDialog.addEventListener("close", () => flushDeferredResult());
 const viewerTitle = document.querySelector("#viewerTitle");
 const viewerMeta = document.querySelector("#viewerMeta");
 const viewerBody = document.querySelector("#viewerBody");
