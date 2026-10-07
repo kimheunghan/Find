@@ -643,8 +643,10 @@ ipcMain.handle("mail:openFile", (_, file, how) => {
   return openWithDefault(String(file));
 });
 
+// 메일 본문 링크도 열 수 있게 http와 메일 주소를 함께 받는다. 그 밖의 주소(file: 등)는 막는다.
 ipcMain.handle("ui:openExternal", (_, url) => {
-  if (/^https:\/\//.test(String(url))) return shell.openExternal(String(url));
+  const target = String(url);
+  if (/^(https?:\/\/|mailto:)/i.test(target)) return shell.openExternal(target);
 });
 
 ipcMain.handle("excludes:set", async (_, excludedPaths) => {

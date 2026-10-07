@@ -1,6 +1,6 @@
 {
   "name": "findinside",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "내 PC의 파일 이름·문서 내용·이미지 속 글자와 메일을 한 번에 검색하는 Windows 앱",
   "main": "src/main.js",
   "type": "commonjs",

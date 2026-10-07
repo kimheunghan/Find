@@ -909,7 +909,7 @@ function renderMailHtml(html, terms) {
   frame.setAttribute("referrerpolicy", "no-referrer");
   frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:">
-<style>html,body{margin:0;padding:10px 12px;background:#fff;color:#1b1f2a;font:14px/1.6 "Malgun Gothic",sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}mark{background:#ffd666;color:inherit}</style>
+<style>html,body{margin:0;padding:10px 12px;background:#fff;color:#1b1f2a;font:14px/1.6 "Malgun Gothic",sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}mark{background:#ffd666;color:inherit}a{color:#1a56db;cursor:pointer}</style>
 </head><body>${html}</body></html>`;
   frame.addEventListener("load", () => {
     const doc = frame.contentDocument;
@@ -918,16 +918,67 @@ function renderMailHtml(html, terms) {
     // 바깥 주소 이미지는 불러오지 않으므로(추적 방지) 깨진 그림 대신 감춘다
     for (const image of doc.images) if (!image.src.startsWith("data:")) image.style.display = "none";
     frame.style.height = `${Math.max(doc.documentElement.scrollHeight, 80) + 4}px`;
+    // 메일 안 링크는 sandbox 때문에 그냥 누르면 아무 일도 일어나지 않는다. 눌린 주소를 받아 기본 웹브라우저로 연다.
+    doc.addEventListener("click", (event) => {
+      const anchor = event.target?.closest?.("a[href]");
+      if (!anchor) return;
+      event.preventDefault();
+      openMailLink(anchor.getAttribute("href"));
+    });
     const first = doc.querySelector("mark");
     if (first) viewerBody.scrollTop = Math.max(frame.offsetTop + first.getBoundingClientRect().top - viewerBody.clientHeight / 2, 0);
   });
   return frame;
 }
 
+// 메일 본문에서 누른 주소를 기본 웹브라우저로 연다 (웹 주소와 메일 주소만 받는다)
+function openMailLink(href) {
+  const url = String(href || "").trim();
+  if (/^(https?:\/\/|mailto:)/i.test(url)) window.findInside.openExternal(url);
+  else if (/^www\./i.test(url)) window.findInside.openExternal(`https://${url}`);
+  else if (url && !url.startsWith("#")) showHint(`열 수 없는 주소입니다: ${url}`, true);
+}
+
+// 글자 메일에는 링크가 없으므로, 본문 글자 속 주소를 눌러서 열 수 있는 링크로 바꾼다
+const MAIL_URL = /(?:https?:\/\/|www\.)[^\s<>"'()[\]{}]+/gi;
+
+function linkifyElement(element) {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => (node.parentNode?.nodeName === "A" ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT)
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    const text = node.nodeValue;
+    MAIL_URL.lastIndex = 0;
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    for (let match; (match = MAIL_URL.exec(text));) {
+      // 주소 뒤에 붙은 마침표·따옴표 같은 글자는 주소에서 뺀다
+      const url = match[0].replace(/[.,;:!?'"]+$/, "");
+      if (!url) continue;
+      MAIL_URL.lastIndex = match.index + url.length;
+      if (match.index > cursor) fragment.append(text.slice(cursor, match.index));
+      const anchor = document.createElement("a");
+      anchor.className = "mailLink";
+      anchor.textContent = url;
+      anchor.addEventListener("click", (event) => {
+        event.preventDefault();
+        openMailLink(url);
+      });
+      fragment.append(anchor);
+      cursor = MAIL_URL.lastIndex;
+    }
+    if (!cursor) continue;
+    if (cursor < text.length) fragment.append(text.slice(cursor));
+    node.replaceWith(fragment);
+  }
+}
+
 // 문서 안 글자 마디마다 검색어를 찾아 <mark>로 감싼다 (스크립트·스타일 안은 건너뛴다)
-function highlightInDocument(doc, terms) {
+function highlightInDocument(doc, terms, root = doc.body) {
   if (!terms.length) return;
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => (/^(SCRIPT|STYLE|TITLE)$/.test(node.parentNode?.nodeName) || !node.nodeValue.trim() ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT)
   });
   const nodes = [];
@@ -999,7 +1050,12 @@ async function openMailItem(item, terms = FindHighlight.queryTerms(queryEl.value
   try {
     const mail = await window.findInside.viewMail(item.kind === "mail" ? { uri: item.path } : { path: item.path });
     const body = mail.html ? renderMailHtml(mail.html, terms) : document.createElement("div");
-    if (!mail.html) renderHighlighted(body, mail.body || "(본문 없음)", terms);
+    if (!mail.html) {
+      // 주소를 먼저 링크로 바꾼 뒤 검색어를 강조해야 강조 때문에 주소가 끊기지 않는다
+      body.textContent = FindHighlight.displayText(mail.body || "(본문 없음)");
+      linkifyElement(body);
+      highlightInDocument(document, terms, body);
+    }
     // 첨부는 본문 위에 두어 본문이 길어도 바로 보이게 하고, 하나씩 열기·저장할 수 있게 한다
     const nodes = mail.attachments.length ? [renderAttachments(mail.attachments, terms, focusAttachment), body] : [body];
     viewerBody.replaceChildren(...nodes);

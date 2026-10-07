@@ -2,7 +2,7 @@
 
 이 문서는 구현 진행 기록이며 제품 범위의 최종 기준은 `docs/FindInside-기획문서.md`다.
 
-## 현재: 1.0.1 — Microsoft Store 공개, 판매 준비 (2026-09-30)
+## 현재: 1.0.3 — Microsoft Store 공개, 판매 준비 (2026-10-07)
 
 ### 완료
 
@@ -46,10 +46,19 @@
 - 검색 위치 경로가 길면 옆 화면을 덮던 문제 수정
 - 스토어 스크린샷용 예시 문서 스크립트 (`scripts/store-demo.js`, `scripts/store-demo-media.js`)
 
+**1.0.2**
+- 한글 쪽 번호 정확도, 검색 결과를 누르면 그 위치로 열기, 앱 안 메일 보기·첨부 열기, 창 닫을 때 오류
+- HTML 메일을 메일 보기에서 원래 모양(문단·줄바꿈·표·본문 이미지)으로 표시
+
+**1.0.3**
+- 메일 본문의 주소를 누르면 기본 웹브라우저로 열린다. HTML 메일은 sandbox 때문에 눌러도 아무 일이 없었고, 글자 메일은 주소가 링크도 아니었다 (`openMailLink`·`linkifyElement`)
+- 글자 메일은 주소를 먼저 링크로 바꾼 뒤 검색어를 강조한다 (순서가 반대면 강조가 주소를 끊는다)
+- 열 수 있는 주소는 `http`·`https`·`mailto`만 (`file:` 등은 그대로 막는다)
+
 ### 다음
 
 1. Lemon Squeezy 실제 판매(Live) 전환: 상품을 Live로 복사하고 결제 링크 교체 (본인 확인 완료)
-2. 스토어 1.0.1 업데이트 제출 (새 패키지·스크린샷), 판매 페이지(`site/`) Netlify에 다시 올리기
+2. 스토어 1.0.3 업데이트 제출 (새 패키지·스크린샷)
 3. Lemon Squeezy 상품 Files에 설치 파일, 2단계 인증
 4. 코드 서명은 보류 (스토어 배포로 대체, 설치 파일 직접 받기에는 경고가 남음)
 5. DOC·XLS·PPT, `AND`/`OR`/`NOT`, 날짜 조건
@@ -60,4 +69,5 @@
 - 실행 중인 FindInside가 C:\ 전체를 감시하면 빌드 폴더를 읽어 빌드가 EPERM으로 실패한다 → `npm run dist`가 먼저 앱을 닫는다.
 - 빌드 후에는 설치된 파일(`%LOCALAPPDATA%\Programs\findinside\resources\app`)에 변경이 들어갔는지 확인한다.
 - 스토어에 새 패키지를 올리려면 `package.json` 버전을 올려야 한다 (예: 1.0.0 → 1.0.1).
-- 새 버전 배포 순서: 버전 올리기 → `npm test` → `npm run dist` + `npm run dist:store` → GitHub 릴리스(findinside-download)에 Find_Setup.exe → Partner Center 새 제출에 appx → `site/` 다시 올리기
+- 새 버전 배포 순서: 버전 올리기 → `npm test` → `npm run dist` + `npm run dist:store` → GitHub 릴리스(findinside-download)에 Find_Setup.exe → Partner Center 새 제출에 appx → (`site/` 내용이 바뀐 때만) Netlify에 다시 올리기
+- 판매 페이지의 내려받기 단추는 `releases/latest/download/Find_Setup.exe`를 가리킨다. 그래서 GitHub 릴리스에 새 설치 파일만 올리면 **판매 페이지를 다시 올리지 않아도** 최신 파일이 내려받아진다 (Netlify 배포가 막혀 있어도 된다).
