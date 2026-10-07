@@ -21,19 +21,29 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 
 1. `package.json`과 `package-lock.json`의 버전 올리기 (스토어는 버전이 같으면 새 패키지를 안 받는다)
 2. `npm test` (75개) — 그리고 `npm run check`
-3. `npm run dist` → `release\Find_Setup.exe` (108MB, 홈페이지용)
+3. `npm run dist` → `release\Find_Setup_v<버전>.exe` (108MB, 홈페이지용). 같은 파일이
+   `release\Find_Setup.exe`로도 복사된다 — **둘 다 필요하다**(아래 참고).
    `npm run dist:store` → `release\FindInside_Store.appx` (161MB, 스토어용)
-4. 커밋·푸시한 뒤 GitHub 릴리스 올리기:
+4. 커밋·푸시한 뒤 GitHub 릴리스에 **두 파일을 다 올린다**:
    ```
-   & "C:\Program Files\GitHub CLI\gh.exe" release create v<버전> "D:\Find\release\Find_Setup.exe" `
+   & "C:\Program Files\GitHub CLI\gh.exe" release create v<버전> `
+     "D:\Find\release\Find_Setup_v<버전>.exe" "D:\Find\release\Find_Setup.exe" `
      -R kimheunghan/findinside-download --title "FindInside <버전>" --notes "바뀐 점"
    ```
    올린 뒤 `gh api repos/kimheunghan/findinside-download/releases/latest --jq .tag_name`으로 확인한다.
 5. **(사용자)** Partner Center에 `release\FindInside_Store.appx`를 새 제출로 올린다. 브라우저 작업이라 내가 못 한다.
 
-### 판매 페이지는 새 버전마다 올릴 필요가 없다
+### 설치 파일을 두 이름으로 올리는 이유 — 빠뜨리지 말 것
 
-판매 페이지의 내려받기 단추가 `releases/latest/download/Find_Setup.exe`를 가리켜 **늘 가장 새 릴리스를 따라간다.** 그래서 GitHub 릴리스만 올리면 페이지는 손대지 않아도 최신 설치 파일을 내려준다. 사용자가 이 점을 자주 되물었으니 먼저 짚어 준다. 페이지는 글·그림·가격을 실제로 고쳤을 때만 올린다 (`npm run docs` → `site/` 폴더를 올림).
+`releases/latest/download/<파일 이름>` 주소는 **이름이 정확히 맞아야** 받아진다. 지금 판매 페이지는 버전 붙은 이름을 가리키지만, 옛 Netlify 페이지와 어딘가 걸려 있을 옛 링크는 아직 `Find_Setup.exe`를 부른다. 그래서 새 릴리스마다 **버전 붙은 파일과 `Find_Setup.exe` 두 개를 다 올린다.** 하나만 올리면 옛 링크가 404가 된다.
+
+(옛 Netlify 페이지를 리디렉션으로 넘긴 뒤로도 당분간은 두 이름을 유지한다.)
+
+### 판매 페이지는 새 버전마다 손댈 필요가 없다
+
+내려받기 주소와 페이지에 적힌 설치 파일 이름은 `package.json`의 버전에서 만들어진다 — `src/product.json`의 `downloadUrl`에 든 `${version}`과 `web/index.html`의 `{{SETUP_FILE}}`를 `npm run docs`가 채운다. 버전만 올리면 페이지 글까지 저절로 맞는다.
+
+`site/`는 Cloudflare Pages(`findinside.pages.dev`)가 저장소를 보고 자동으로 올린다. 푸시하면 1~2분 뒤 반영된다. 사람이 올릴 일은 없다.
 
 ## 저장소 두 개
 
