@@ -62,9 +62,9 @@
 
 ### 다음
 
-1. 스토어에 1.0.4 제출 (Live 키를 받으려면 스토어 앱도 1.0.4여야 한다. 1.0.3은 테스트 상품 키만 받는다)
-2. 스토어 1.0.3 인증 결과 확인 (2026-10-07 Submission 5 제출 → 인증 중)
-3. Lemon Squeezy 상품 Files에 설치 파일, 2단계 인증
+1. 스토어 페이지 "이 버전의 새로운 기능" 글을 1.0.4로 (`docs/다음-할-일.md` 2번) — 제출마다 첫 줄에 버전 적기
+2. Lemon Squeezy 테스트 상품 내리기, 상품 Files에 설치 파일, 2단계 인증
+3. 휴대폰에서 설치 파일 링크가 GitHub 앱으로 열리는 것 (`docs/다음-할-일.md` 2-1번, 미정)
 4. 코드 서명은 보류 (스토어 배포로 대체, 설치 파일 직접 받기에는 경고가 남음)
 5. DOC·XLS·PPT, `AND`/`OR`/`NOT`, 날짜 조건
 6. 자동 업데이트, Microsoft 365 연결, 의미 검색, 육안 검수·수집함
@@ -75,7 +75,7 @@
 - 빌드 후에는 설치된 파일(`%LOCALAPPDATA%\Programs\findinside\resources\app`)에 변경이 들어갔는지 확인한다.
 - 스토어에 새 패키지를 올리려면 `package.json` 버전을 올려야 한다 (예: 1.0.0 → 1.0.1).
 - 새 버전 배포 순서: 버전 올리기 → `npm test` → `npm run dist` + `npm run dist:store` → GitHub 릴리스(findinside-download)에 Find_Setup.exe → Partner Center 새 제출에 appx → 판매 페이지는 푸시하면 Cloudflare(`site/`)와 Netlify(`netlify.toml` → `scripts/site-netlify.js`가 주소를 netlify.app으로 바꾼 복사본)에 각각 저절로 올라간다 (두 사이트는 서로 넘기지 않는다)
-- 판매 페이지의 내려받기 단추는 `releases/latest/download/Find_Setup.exe`를 가리킨다. 그래서 GitHub 릴리스에 새 설치 파일만 올리면 **판매 페이지를 다시 올리지 않아도** 최신 파일이 내려받아진다 (Netlify 배포가 막혀 있어도 된다).
+- 판매 페이지의 내려받기 단추는 `releases/latest/download/Find_Setup_v<버전>.exe`를 가리킨다 (옛 링크용 `Find_Setup.exe`도 릴리스마다 같이 올린다). 설치 파일이 108MB라 GitHub 릴리스 첨부에만 둘 수 있다. 이 링크는 GitHub 페이지 없이 바로 내려받기가 되지만, GitHub 앱이 깔린 휴대폰에서는 앱이 열린다.
 - GitHub 릴리스는 이 PC의 `gh`(GitHub CLI, `kimheunghan` 로그인 완료)로 올린다. 100MB가 넘는 설치 파일은 저장소에 push할 수 없으므로 릴리스 첨부로만 올라간다.
-- 1.0.3 배포 결과: GitHub 릴리스 v1.0.3 공개(2026-10-07), 스토어 Submission 5 인증 중.
-- 1.0.4 배포 결과: GitHub 릴리스 v1.0.4 공개(2026-10-08, 깜빡임·목록 튐 수정본으로 같은 날 파일 교체), 판매 페이지 결제 링크 Live로(pages.dev·netlify 둘 다), 스토어 1.0.4 제출(2026-10-08) → 인증 중.
+- 1.0.3 배포 결과: GitHub 릴리스 v1.0.3 공개(2026-10-07), 스토어 제출은 취소하고 1.0.4로 바꿈.
+- 1.0.4 배포 결과: GitHub 릴리스 v1.0.4 공개(2026-10-08, 깜빡임·목록 튐 수정본으로 같은 날 파일 교체), 판매 페이지 결제 링크 Live로(pages.dev·netlify 둘 다), 스토어 1.0.4 제출(2026-10-08) → 같은 날 인증 통과·배포 중 (스토어 페이지의 "새로운 기능" 글은 아직 1.0.2 것). 2026-10-09 Netlify를 저장소에 연결해 두 판매 페이지가 각자 주소로 저절로 올라감.
