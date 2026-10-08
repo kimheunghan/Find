@@ -12,6 +12,7 @@
     "qa:ocr": "node scripts/qa-ocr.js",
     "dist": "node scripts/dist.js",
     "docs": "node scripts/build-docs.js",
+    "site:netlify": "node scripts/site-netlify.js",
     "icon": "electron scripts/make-icon.js",
     "dist:store": "node scripts/dist-store.js"
   },

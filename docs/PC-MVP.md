@@ -74,7 +74,7 @@
 - 실행 중인 FindInside가 C:\ 전체를 감시하면 빌드 폴더를 읽어 빌드가 EPERM으로 실패한다 → `npm run dist`가 먼저 앱을 닫는다.
 - 빌드 후에는 설치된 파일(`%LOCALAPPDATA%\Programs\findinside\resources\app`)에 변경이 들어갔는지 확인한다.
 - 스토어에 새 패키지를 올리려면 `package.json` 버전을 올려야 한다 (예: 1.0.0 → 1.0.1).
-- 새 버전 배포 순서: 버전 올리기 → `npm test` → `npm run dist` + `npm run dist:store` → GitHub 릴리스(findinside-download)에 Find_Setup.exe → Partner Center 새 제출에 appx → (`site/` 내용이 바뀐 때만) Netlify에 다시 올리기
+- 새 버전 배포 순서: 버전 올리기 → `npm test` → `npm run dist` + `npm run dist:store` → GitHub 릴리스(findinside-download)에 Find_Setup.exe → Partner Center 새 제출에 appx → 판매 페이지는 푸시하면 Cloudflare(`site/`)와 Netlify(`netlify.toml` → `scripts/site-netlify.js`가 주소를 netlify.app으로 바꾼 복사본)에 각각 저절로 올라간다 (두 사이트는 서로 넘기지 않는다)
 - 판매 페이지의 내려받기 단추는 `releases/latest/download/Find_Setup.exe`를 가리킨다. 그래서 GitHub 릴리스에 새 설치 파일만 올리면 **판매 페이지를 다시 올리지 않아도** 최신 파일이 내려받아진다 (Netlify 배포가 막혀 있어도 된다).
 - GitHub 릴리스는 이 PC의 `gh`(GitHub CLI, `kimheunghan` 로그인 완료)로 올린다. 100MB가 넘는 설치 파일은 저장소에 push할 수 없으므로 릴리스 첨부로만 올라간다.
 - 1.0.3 배포 결과: GitHub 릴리스 v1.0.3 공개(2026-10-07), 스토어 Submission 5 인증 중.
