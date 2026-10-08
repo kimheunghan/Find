@@ -1,6 +1,11 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="site.css"><style>
 html,body{margin:0;width:1600px;height:1200px;overflow:hidden;background:#0b1122}
-.hero{height:1200px;display:flex;align-items:center;padding:0}
+.hero{height:1012px;display:flex;align-items:center;padding:0}
+/* 아래쪽 황색 안내 띠. 스토어 옛 판(1.0.3 이하)은 산 키를 거절해서, 스토어 화면에 보이는
+   "업데이트 날짜"로 새 판을 가려내게 알린다. 1.0.3 쓰는 사람이 거의 없어지면 이 띠를 지운다. */
+.strip{height:188px;display:flex;align-items:center;gap:34px;padding:0 66px;background:#f59e0b;color:#1a1200}
+.strip .mark{flex:none;width:84px;height:84px;border-radius:50%;background:#140f00;color:#f59e0b;display:flex;align-items:center;justify-content:center;font-size:56px;font-weight:900;line-height:1}
+.strip b{font-size:46px;font-weight:800;letter-spacing:-.02em;white-space:nowrap}
 .hero .wrap{max-width:1440px;padding:0 60px}
 .hero-grid{gap:64px}
 .hero h1{font-size:76px}.answer{font-size:32px}.sub{font-size:23px}.note{font-size:19px}.eyebrow{font-size:18px}
@@ -41,4 +46,6 @@ html,body{margin:0;width:1600px;height:1200px;overflow:hidden;background:#0b1122
       </div>
     </div>
   </div>
-</section></body></html>
+</section>
+<div class="strip"><span class="mark">!</span><b>MS Store: 업데이트 날짜 2026. 10. 8. 또는 그 이후 판으로 설치</b></div>
+</body></html>
