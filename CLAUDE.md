@@ -68,7 +68,7 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 | 저장소 | 들어 있는 것 |
 |---|---|
 | `kimheunghan/Find` (비공개) | 소스·문서 전부 |
-| `kimheunghan/findinside-download` (공개) | 설치 파일 — README 하나뿐이고 실제 파일은 **릴리스 첨부**로 올라간다 |
+| `kimheunghan/findinside-download` (공개) | 설치 파일 — README 하나뿐이고 실제 파일은 **릴리스 첨부**로 올라간다. README는 검색에 걸리는 소개 글이고 버전을 적지 않는다(설치 링크는 늘 최신인 `findinside.pages.dev/download/Find_Setup.exe`) — 새 버전 때 고칠 필요 없음 |
 
 100MB가 넘는 파일은 GitHub 저장소에 push할 수 없다. 설치 파일이 108MB라 릴리스로만 올라간다.
 
