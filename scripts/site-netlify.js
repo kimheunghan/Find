@@ -13,6 +13,9 @@ const to = path.join(root, "release", "site-netlify");
 const OLD = "findinside.pages.dev";
 const NEW = "findinside.netlify.app";
 const textExt = new Set([".html", ".txt", ".xml", ".css", ".js", ".json"]);
+// 네이버 서치어드바이저 소유 확인 태그 — 등록한 주소(findinside.netlify.app)에만 맞으므로 Netlify 첫 페이지에만 넣는다.
+// pages.dev도 네이버에 올리려면 그 주소로 따로 등록해 받은 태그를 web/index.html에 넣는다.
+const NAVER_META = '<meta name="naver-site-verification" content="152b5342ada0678ee3b3b6ab51336797878756fa" />';
 
 fs.rmSync(to, { recursive: true, force: true });
 fs.mkdirSync(to, { recursive: true });
@@ -25,7 +28,11 @@ for (const name of fs.readdirSync(from)) {
     fs.copyFileSync(src, dst);
     continue;
   }
-  const text = fs.readFileSync(src, "utf8");
+  let text = fs.readFileSync(src, "utf8");
+  if (name === "index.html") {
+    if (!text.includes("</head>")) throw new Error("index.html에 </head>가 없어 네이버 확인 태그를 못 넣음");
+    text = text.replace("</head>", `${NAVER_META}\n</head>`);
+  }
   const count = text.split(OLD).length - 1;
   fs.writeFileSync(dst, text.split(OLD).join(NEW));
   if (count) {
