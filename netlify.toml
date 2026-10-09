@@ -5,3 +5,10 @@
 [build]
   command = "node scripts/site-netlify.js"
   publish = "release/site-netlify"
+
+# 설치 파일 링크(/download/Find_Setup_v<버전>.exe): Cloudflare는 functions/download가 GitHub에서 받아 넘겨주지만,
+# Netlify에는 그 함수가 없으므로 GitHub 릴리스 첨부로 넘긴다 (전처럼 출처는 github.com이 된다).
+[[redirects]]
+  from = "/download/:file"
+  to = "https://github.com/kimheunghan/findinside-download/releases/latest/download/:file"
+  status = 302

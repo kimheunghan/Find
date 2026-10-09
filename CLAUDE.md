@@ -56,6 +56,8 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 
 내려받기 주소와 페이지에 적힌 설치 파일 이름은 `package.json`의 버전에서 만들어진다 — `src/product.json`의 `downloadUrl`에 든 `${version}`과 `web/index.html`의 `{{SETUP_FILE}}`를 `npm run docs`가 채운다. 버전만 올리면 페이지 글까지 저절로 맞는다.
 
+내려받기 주소는 github.com이 아니라 `findinside.pages.dev/download/Find_Setup_v<버전>.exe`다. 저장소 루트의 `functions/download/[file].js`(Cloudflare Pages 함수)가 GitHub 릴리스 **태그 `v<버전>`**에서 파일을 받아 그대로 넘겨준다 — 그래서 휴대폰 다운로드 목록의 출처가 github.com이 아니라 pages.dev로 찍힌다. **릴리스 태그는 반드시 `v<package.json 버전>`으로 만든다** (다르면 404). Netlify에는 함수가 없어 `netlify.toml` 리디렉션이 GitHub로 넘긴다.
+
 `site/`는 Cloudflare Pages(`findinside.pages.dev`)가 저장소를 보고 자동으로 올린다. Netlify(`findinside.netlify.app`)도 저장소를 보고 올리되, `netlify.toml`에 따라 `scripts/site-netlify.js`가 주소를 netlify.app으로 바꾼 복사본을 올린다. 두 사이트는 서로 넘기지 않고 각각 자기 주소를 쓴다. 푸시하면 1~2분 뒤 반영된다. 사람이 올릴 일은 없다.
 
 ## 저장소 두 개
