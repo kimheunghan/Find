@@ -45,8 +45,9 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
      -R kimheunghan/findinside-download --title "FindInside <버전>" --notes "바뀐 점"
    ```
    올린 뒤 `gh api repos/kimheunghan/findinside-download/releases/latest --jq .tag_name`으로 확인한다.
-   그리고 findinside-download의 **README에 적힌 버전 두 군데**("최신 1.0.4", `Find_Setup_v1.0.4.exe` 링크)를 새 버전으로 고친다
-   (`gh api -X PUT repos/kimheunghan/findinside-download/contents/README.md` — sha 필요).
+   그리고 **`npm run release:readme`** — findinside-download README의 설치 파일 버전("최신 x.y.z", `Find_Setup_vx.y.z.exe` 링크)을
+   `package.json` 버전으로 맞춘다 (최신 릴리스 태그가 그 버전이 아니면 멈춘다). **설치 파일 버전이 바뀌면 보이는 곳 모두 새 버전이어야 한다**:
+   판매 페이지 두 곳은 `npm run docs`, README는 이 명령, 받은 파일 이름은 함수가 알아서 맞춘다.
 5. **(사용자)** Partner Center에 `release\FindInside_Store_v<버전>.appx`를 새 제출로 올린다. 브라우저 작업이라 내가 못 한다.
 
 ### 설치 파일을 두 이름으로 올리는 이유 — 빠뜨리지 말 것

@@ -14,7 +14,8 @@
     "docs": "node scripts/build-docs.js",
     "site:netlify": "node scripts/site-netlify.js",
     "icon": "electron scripts/make-icon.js",
-    "dist:store": "node scripts/dist-store.js"
+    "dist:store": "node scripts/dist-store.js",
+    "release:readme": "node scripts/update-download-readme.js"
   },
   "devDependencies": {
     "electron": "^38.1.2",
