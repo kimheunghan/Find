@@ -7,17 +7,25 @@ const RELEASES = "https://github.com/kimheunghan/findinside-download/releases";
 
 export async function onRequest({ request, params }) {
   const file = String(params.file || "");
-  // Find_Setup_v1.0.4.exe → 그 버전 릴리스(v1.0.4)에서, 예전 이름 Find_Setup.exe → 가장 새 릴리스에서
+  // Find_Setup_v1.0.4.exe → 그 버전 릴리스(v1.0.4)에서.
+  // 예전 이름 Find_Setup.exe → 가장 새 릴리스의 태그를 알아내 버전 붙은 파일로 내려준다 (받은 파일 이름에 버전이 보이게)
   const match = /^Find_Setup(?:_v(\d+\.\d+\.\d+))?\.exe$/.exec(file);
   if (!match) return new Response("Not found", { status: 404 });
-  const source = match[1] ? `${RELEASES}/download/v${match[1]}/${file}` : `${RELEASES}/latest/download/${file}`;
+  let version = match[1];
+  if (!version) {
+    const latest = await fetch(`${RELEASES}/latest`, { redirect: "manual" });
+    version = /\/tag\/v(\d+\.\d+\.\d+)$/.exec(latest.headers.get("Location") || "")?.[1];
+    if (!version) return new Response("Not found", { status: 404 });
+  }
+  const name = `Find_Setup_v${version}.exe`;
+  const source = `${RELEASES}/download/v${version}/${name}`;
 
   const upstream = await fetch(source, { method: request.method === "HEAD" ? "HEAD" : "GET", redirect: "follow", cf: { cacheEverything: true, cacheTtl: 86400 } });
   if (!upstream.ok) return new Response("Not found", { status: 404 });
 
   const headers = new Headers({
     "Content-Type": "application/octet-stream",
-    "Content-Disposition": `attachment; filename="${file}"`,
+    "Content-Disposition": `attachment; filename="${name}"`,
     "Cache-Control": "public, max-age=86400"
   });
   const length = upstream.headers.get("Content-Length");
