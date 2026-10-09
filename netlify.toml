@@ -7,8 +7,10 @@
   publish = "release/site-netlify"
 
 # 설치 파일 링크(/download/Find_Setup_v<버전>.exe): Cloudflare는 functions/download가 GitHub에서 받아 넘겨주지만,
-# Netlify에는 그 함수가 없으므로 GitHub 릴리스 첨부로 넘긴다 (전처럼 출처는 github.com이 된다).
+# Netlify에는 그 함수가 없으므로 Netlify가 pages.dev의 그 주소를 대신 불러와 넘겨준다 (status 200 = 프록시).
+# 브라우저는 netlify.app을 벗어나지 않으므로 휴대폰 다운로드 목록의 출처가 findinside.netlify.app이 된다.
+# (GitHub로 바로 프록시하면 GitHub가 다른 주소로 넘기는 응답이 그대로 브라우저에 가서 출처가 github 쪽이 된다.)
 [[redirects]]
   from = "/download/:file"
-  to = "https://github.com/kimheunghan/findinside-download/releases/latest/download/:file"
-  status = 302
+  to = "https://findinside.pages.dev/download/:file"
+  status = 200
