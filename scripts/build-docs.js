@@ -30,7 +30,7 @@ need(product.website, "website (판매 페이지 주소)");
 need(product.lemonSqueezy.storeId, "lemonSqueezy.storeId (다른 가게 키 막기)");
 need(product.lemonSqueezy.productId, "lemonSqueezy.productId (다른 제품 키 막기)");
 
-// 구매 링크는 새 탭에서 연다 (판매 페이지를 닫지 않고 결제하도록, 족보 사이트와 같게)
+// 구매·스토어 링크는 새 탭에서 연다 (판매 페이지를 닫지 않고 결제하도록, 족보 사이트와 같게)
 const newTab = ` target="_blank" rel="noopener"`;
 const values = {
   OWNER: escape(product.owner),
@@ -43,8 +43,9 @@ const values = {
   BUY_BUTTON: checkout ? `<a class="button primary" href="${escape(checkout)}"${newTab}>구매하기</a>` : "",
   BUY_BUTTON_GHOST: checkout ? `<a class="button ghost" href="${escape(checkout)}"${newTab}>구매하기 ₩${escape(String(product.price || "").replace(/^₩/, ""))}</a>` : "",
   // 체험판은 Microsoft Store가 기본 (스토어가 서명해 Windows·백신 경고가 없다). 설치 파일 직접 받기는 보조 링크
-  DOWNLOAD_BUTTON: product.storeUrl ? `<a class="button primary" href="${escape(product.storeUrl)}">Microsoft Store에서 무료 체험</a>` : download ? `<a class="button primary" href="${escape(download)}">무료 체험판 내려받기</a>` : "",
+  DOWNLOAD_BUTTON: product.storeUrl ? `<a class="button primary" href="${escape(product.storeUrl)}"${newTab}>Microsoft Store에서 무료 체험</a>` : download ? `<a class="button primary" href="${escape(download)}">무료 체험판 내려받기</a>` : "",
   STORE_LINK: product.storeUrl ? escape(product.storeUrl) : (download ? escape(download) : "#"),
+  STORE_TARGET: product.storeUrl ? newTab : "",
   DOWNLOAD_LINK: download ? escape(download) : "#",
   SETUP_FILE: escape(setupFile),
   CHECKOUT_LINK: checkout ? escape(checkout) : "#pricing",
