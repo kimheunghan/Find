@@ -64,7 +64,7 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 
 판매 페이지의 구매 링크는 모두 새 탭에서 열린다 (`scripts/build-docs.js`의 `newTab`).
 
-`site/`는 Cloudflare Pages(`findinside.pages.dev`)가 저장소를 보고 자동으로 올린다. Netlify(`findinside.netlify.app`)도 저장소를 보고 올리되, `netlify.toml`에 따라 `scripts/site-netlify.js`가 주소를 netlify.app으로 바꾼 복사본을 올린다. 두 사이트는 서로 넘기지 않고 각각 자기 주소를 쓴다. 푸시하면 1~2분 뒤 반영된다. 사람이 올릴 일은 없다.
+`site/`는 Cloudflare Pages(`findinside.pages.dev`)가 저장소를 보고 자동으로 올린다. Netlify(`findinside.netlify.app`)도 저장소를 보고 올리되, `netlify.toml`에 따라 `scripts/site-netlify.js`가 주소를 netlify.app으로 바꾼 복사본을 올린다. 두 사이트는 서로 넘기지 않고(방문자는 각자 자기 주소에서 보고 받는다), **검색 엔진용 대표 주소는 netlify.app 하나다** (2026-10-10 결정): `<head>`의 `canonical`·`og:url`·`og:image`·구조화 데이터, `sitemap.xml`, `robots.txt`의 주소는 `site/`에서도 netlify.app으로 적는다. 새 안내 페이지를 만들 때도 `<head>` 주소는 netlify.app, 본문 링크·다운로드 링크는 pages.dev로 쓴다(Netlify 복사본에서 바뀜). 푸시하면 1~2분 뒤 반영된다. 사람이 올릴 일은 없다.
 
 ## 저장소 두 개
 

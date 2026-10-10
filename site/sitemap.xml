@@ -1,39 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://findinside.pages.dev/</loc>
+    <loc>https://findinside.netlify.app/</loc>
     <lastmod>2026-10-10</lastmod>
   </url>
   <url>
-    <loc>https://findinside.pages.dev/file-search</loc>
+    <loc>https://findinside.netlify.app/file-search</loc>
     <lastmod>2026-10-10</lastmod>
   </url>
   <url>
-    <loc>https://findinside.pages.dev/hwp-search</loc>
+    <loc>https://findinside.netlify.app/hwp-search</loc>
     <lastmod>2026-10-07</lastmod>
   </url>
   <url>
-    <loc>https://findinside.pages.dev/pdf-search</loc>
+    <loc>https://findinside.netlify.app/pdf-search</loc>
     <lastmod>2026-10-07</lastmod>
   </url>
   <url>
-    <loc>https://findinside.pages.dev/excel-search</loc>
+    <loc>https://findinside.netlify.app/excel-search</loc>
     <lastmod>2026-10-07</lastmod>
   </url>
   <url>
-    <loc>https://findinside.pages.dev/ocr-search</loc>
+    <loc>https://findinside.netlify.app/ocr-search</loc>
     <lastmod>2026-10-07</lastmod>
   </url>
   <url>
-    <loc>https://findinside.pages.dev/mail-search</loc>
+    <loc>https://findinside.netlify.app/mail-search</loc>
     <lastmod>2026-10-10</lastmod>
   </url>
   <url>
-    <loc>https://findinside.pages.dev/privacy</loc>
+    <loc>https://findinside.netlify.app/privacy</loc>
     <lastmod>2026-10-07</lastmod>
   </url>
   <url>
-    <loc>https://findinside.pages.dev/terms</loc>
+    <loc>https://findinside.netlify.app/terms</loc>
     <lastmod>2026-10-07</lastmod>
   </url>
 </urlset>
