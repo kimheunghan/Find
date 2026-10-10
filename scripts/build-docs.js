@@ -107,7 +107,8 @@ for (const name of ["terms.html", "privacy.html"]) {
 for (const out of [legalOut, siteOut]) fs.copyFileSync(path.join(root, "legal", "legal.css"), path.join(out, "legal.css"));
 write(path.join(siteOut, "index.html"), fill(fs.readFileSync(path.join(root, "web", "index.html"), "utf8")));
 fs.copyFileSync(path.join(root, "web", "site.css"), path.join(siteOut, "site.css"));
-for (const icon of ["icon.png", "icon-48.png", "icon-96.png", "icon-192.png"]) fs.copyFileSync(path.join(root, "web", icon), path.join(siteOut, icon));
+// favicon.ico: 없으면 Netlify가 자기 기본 아이콘을 내줘서 구글 검색 결과에 Netlify 로고가 나온다
+for (const icon of ["icon.png", "icon-48.png", "icon-96.png", "icon-192.png", "favicon.ico"]) fs.copyFileSync(path.join(root, "web", icon), path.join(siteOut, icon));
 const noticeText = notices();
 write(path.join(legalOut, "THIRD-PARTY-NOTICES.txt"), noticeText);
 write(path.join(siteOut, "third-party-notices.txt"), noticeText);
