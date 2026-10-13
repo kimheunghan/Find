@@ -1,7 +1,7 @@
 # Netlify 설정 — Netlify가 이 저장소를 보고 있으면 푸시할 때마다 이 설정대로 올라간다.
 # 저장소의 site/ 폴더는 Cloudflare(findinside.pages.dev) 주소로 되어 있다.
 # Netlify(findinside.netlify.app)에는 주소를 netlify.app으로 바꾼 복사본(release/site-netlify)을 올린다.
-# 두 사이트는 서로 넘기지 않고 각각 자기 주소를 쓴다.
+# 대표 주소는 netlify.app이다. pages.dev의 페이지 요청은 functions/_middleware.js가 이쪽으로 301로 넘긴다 (/download/만 빼고).
 [build]
   command = "node scripts/site-netlify.js"
   publish = "release/site-netlify"
