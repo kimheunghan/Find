@@ -66,6 +66,13 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 
 `site/`는 Cloudflare Pages(`findinside.pages.dev`)가 저장소를 보고 자동으로 올린다. Netlify(`findinside.netlify.app`)도 저장소를 보고 올리되, `netlify.toml`에 따라 `scripts/site-netlify.js`가 주소를 netlify.app으로 바꾼 복사본을 올린다. **대표 주소는 netlify.app 하나다**: pages.dev의 페이지 요청은 `functions/_middleware.js`가 netlify.app의 같은 주소로 301로 넘긴다 (2026-10-13 결정, `/download/`만 빼고 — 설치 파일은 계속 pages.dev 함수가 내주고 Netlify 프록시도 그걸 쓴다). 그 전부터 (2026-10-10 결정): `<head>`의 `canonical`·`og:url`·`og:image`·구조화 데이터, `sitemap.xml`, `robots.txt`의 주소는 `site/`에서도 netlify.app으로 적는다. 새 안내 페이지를 만들 때도 `<head>` 주소는 netlify.app, 본문 링크·다운로드 링크는 pages.dev로 쓴다(Netlify 복사본에서 바뀜). 푸시하면 1~2분 뒤 반영된다. 사람이 올릴 일은 없다.
 
+## 내 PC에 정품 키 없이 쓰는 개인용 설치
+
+`npm run install:mine` (`scripts/install-mine.js`). 압축 안 한 빌드를 만든 뒤 **그 복사본의** `license.js`만 "항상 정품"으로 바꿔
+`%LOCALAPPDATA%\Programs\FindInside-개인용`에 깔고 바탕화면에 "FindInside (개인용)" 바로 가기를 만든다.
+소스는 그대로라 판매용 설치 파일·스토어 패키지에는 이 우회가 들어가지 않는다 — 소스의 `license.js`에 우회를 넣지 말 것.
+설정·색인 폴더(`%APPDATA%\FindInside`)는 일반 설치본과 같이 쓴다. 새 버전이 나오면 다시 돌려 덮어쓴다.
+
 ## 저장소 두 개
 
 | 저장소 | 들어 있는 것 |
