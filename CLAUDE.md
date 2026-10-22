@@ -72,6 +72,8 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 `%LOCALAPPDATA%\Programs\FindInside-개인용`에 깔고 바탕화면에 "FindInside (개인용)" 바로 가기를 만든다.
 소스는 그대로라 판매용 설치 파일·스토어 패키지에는 이 우회가 들어가지 않는다 — 소스의 `license.js`에 우회를 넣지 말 것.
 설정·색인 폴더(`%APPDATA%\FindInside`)는 일반 설치본과 같이 쓴다. 새 버전이 나오면 다시 돌려 덮어쓴다.
+앱은 한 번에 하나만 켜지므로 일반 설치본·스토어판이 이미 켜져 있으면 개인용 바로 가기를 눌러도 그 창이 앞으로 나와 "체험 기간이 끝났습니다"가 보인다 — 다른 것을 닫고 켠다.
+클로드 터미널에서 띄울 때는 `ELECTRON_RUN_AS_NODE`가 걸려 있어 바로 꺼지므로, 그 환경 변수를 지우고 바로 가기(explorer)로 띄운다.
 
 ## 저장소 두 개
 
