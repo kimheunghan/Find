@@ -1,5 +1,7 @@
 "use strict";
 
+const { prepareFuzzy, fuzzyContains } = require("./fuzzy");
+
 function normalize(value) {
   return String(value ?? "").normalize("NFKC").toLocaleLowerCase();
 }
@@ -64,18 +66,27 @@ function matchesFilters(entry, filters) {
 
 // 검색어마다 파일명·경로 또는 파일 내용 중 한 곳에는 있어야 한다.
 // contentMatches: Map<경로, { terms: Set<검색어>, hits }> (contentIndex.searchContent 결과)
-function scoreKeys({ name, path }, kind, tokens, contentMatch) {
+// fuzzy: 검색어별 오탈자 검색 준비 (없으면 정확히 일치하는 것만)
+function scoreKeys({ name, path, compact: compactName }, kind, tokens, contentMatch, fuzzy = null) {
   let score = 0;
   let nameMatched = false;
   let contentMatched = false;
+  let fuzzyMatched = false;
 
-  for (const token of tokens) {
+  for (const [index, token] of tokens.entries()) {
     // 따옴표로 묶은 "설치 정보"는 띄어쓰기 없이 쓴 "설치정보"와도 일치로 본다.
     const compact = /\s/.test(token) ? token.replace(/\s+/g, "") : null;
-    const inName = name.includes(token) || path.includes(token)
+    // 반대로 "설치정보"로 검색하면 이름이 "설치 정보", "설치_정보"인 것도 찾는다.
+    let inName = name.includes(token) || path.includes(token)
+      || Boolean(compactName && compactName.includes(compact || token))
       || Boolean(compact && path.replace(/\s+/g, "").includes(compact));
     const inContent = Boolean(contentMatch && contentMatch.terms.has(token));
+    if (!inName && !inContent && fuzzy?.[index] && fuzzyContains(compactName || name, fuzzy[index])) {
+      inName = true;
+      fuzzyMatched = true;
+    }
     if (!inName && !inContent) return null;
+    if (inContent && !inName && contentMatch.fuzzyTerms?.has(token)) fuzzyMatched = true;
     if (inName) {
       nameMatched = true;
       if (name === token) score += 120;
@@ -91,21 +102,32 @@ function scoreKeys({ name, path }, kind, tokens, contentMatch) {
 
   if (kind === "folder") score += 3;
   const matchedIn = [nameMatched && "name", contentMatched && "content"].filter(Boolean);
-  return { score, matchedIn };
+  return { score, matchedIn, fuzzy: fuzzyMatched };
 }
 
 // 항목이 수백만 개면 검색할 때마다 이름·경로를 정규화하는 데만 몇 초가 걸려 창이 멈춘다.
 // 목록(배열)별로 정규화 결과를 한 번만 만들어 두고 재사용한다.
 const normalizedCache = new WeakMap();
 
+// compact: 띄어쓰기·밑줄을 뺀 이름 (이름에 그런 글자가 있을 때만 둔다, 메모리를 아끼려고)
+function makeKey(entry) {
+  const name = normalize(entry.name);
+  const compact = /[\s_]/.test(name) ? name.replace(/[\s_]+/g, "") : undefined;
+  return { name, path: comparablePath(entry.path), compact };
+}
+
 function normalizedKeys(entries) {
   let keys = normalizedCache.get(entries);
   if (!keys || keys.length !== entries.length) {
-    keys = entries.map((entry) => ({ name: normalize(entry.name), path: comparablePath(entry.path) }));
+    keys = entries.map(makeKey);
     normalizedCache.set(entries, keys);
   }
   return keys;
 }
+
+// 이름 정렬: 소문자로 바꿔 둔 이름을 글자 번호 순으로 견준다 (한글은 가나다순 그대로).
+// 결과가 수십만 개일 때 localeCompare로 정렬하면 1초 넘게 걸린다.
+const compareNames = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 // 최신순 정렬에서 날짜를 확인할 최대 개수 (파일 날짜는 디스크에서 읽어 오므로 관련도 높은 것부터 이만큼만)
 const NEWEST_CANDIDATES = 20000;
@@ -120,6 +142,8 @@ function searchEntries(entries, query, filters = {}, limit = 200, contentMatches
   const scopes = (filters.scopes || []).map(comparablePath).filter(Boolean);
   const kind = filters.kind === "file" || filters.kind === "folder" ? filters.kind : null;
   const extensions = new Set(normalizeExtensions(filters.extensions));
+  // filters.fuzzy: 오탈자 검색 (정확히 일치하는 결과가 적을 때 main이 한 번 더 부른다)
+  const fuzzy = filters.fuzzy ? tokens.map(prepareFuzzy) : null;
   const found = [];
 
   for (let i = 0; i < entries.length; i += 1) {
@@ -130,12 +154,13 @@ function searchEntries(entries, query, filters = {}, limit = 200, contentMatches
     if (scopes.length && !scopes.some((scope) => key.path === scope || key.path.startsWith(`${scope}\\`))) continue;
 
     const contentMatch = contentMatches.get(entry.path);
-    const result = scoreKeys(key, entry.kind, tokens, contentMatch);
-    if (result) found.push({ entry, contentMatch, result });
+    const result = scoreKeys(key, entry.kind, tokens, contentMatch, fuzzy);
+    if (result) found.push({ entry, sortName: key.name, contentMatch, result });
   }
 
   stats.total = found.length;
-  found.sort((a, b) => b.result.score - a.result.score || a.entry.name.localeCompare(b.entry.name));
+  // 오탈자로 찾은 것은 정확히 일치한 것 뒤에
+  found.sort((a, b) => a.result.fuzzy - b.result.fuzzy || b.result.score - a.result.score || compareNames(a.sortName, b.sortName));
   let ordered = found;
   if (filters.sort === "newest" && dateOf) {
     ordered = found.slice(0, NEWEST_CANDIDATES);
@@ -143,7 +168,7 @@ function searchEntries(entries, query, filters = {}, limit = 200, contentMatches
     // 날짜가 잘못 적힌 파일(예: 2069년)이 맨 위를 차지하지 않게, 하루 넘게 미래인 날짜는 날짜 모름으로 정렬한다
     const latest = Date.now() + 86_400_000;
     const sortTime = (item) => (item.time > latest ? 0 : item.time);
-    ordered.sort((a, b) => sortTime(b) - sortTime(a) || b.result.score - a.result.score);
+    ordered.sort((a, b) => a.result.fuzzy - b.result.fuzzy || sortTime(b) - sortTime(a) || b.result.score - a.result.score);
   }
   // 보여 줄 결과에는 정렬과 관계없이 날짜를 붙인다 (같은 이름의 파일을 구분할 수 있게)
   return ordered
@@ -153,6 +178,7 @@ function searchEntries(entries, query, filters = {}, limit = 200, contentMatches
       time: time ?? (dateOf ? dateOf(entry) || 0 : 0),
       score: result.score,
       matchedIn: result.matchedIn,
+      ...(result.fuzzy ? { fuzzy: true } : {}),
       hits: result.matchedIn.includes("content") ? contentMatch.hits : []
     }));
 }
@@ -176,7 +202,7 @@ function updateEntries(entries, added = [], removed = []) {
   }
   for (const entry of added) {
     entries.push(entry);
-    keys.push({ name: normalize(entry.name), path: comparablePath(entry.path) });
+    keys.push(makeKey(entry));
   }
 }
 

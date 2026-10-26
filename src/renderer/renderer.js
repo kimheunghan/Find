@@ -209,6 +209,7 @@ function renderResults(items, total = items.length) {
     renderHighlighted(row.querySelector(".name"), item.name, terms);
     renderHighlighted(row.querySelector(".path"), isMail ? mailSummary(item) : item.path, terms);
     row.querySelector(".type").textContent = [
+      item.fuzzy ? "비슷한 말" : "",
       item.matchedIn?.includes("content") ? "내용 일치" : "",
       isMail ? "메일" : item.kind === "folder" ? "폴더" : item.extension || "파일",
       item.time ? formatDate(item.time) : ""
@@ -454,8 +455,17 @@ async function runSearch({ quiet = false } = {}) {
   if (query) {
     const stopLoading = quiet ? () => {} : showLoading(sequence);
     searchInFlight = true;
+    const options = { ...filters, source, sort: sortEl.value, mailFolders: source === "mail" ? selectedMailFolders : [] };
     try {
-      result = await window.findInside.search(query, { ...filters, source, sort: sortEl.value, mailFolders: source === "mail" ? selectedMailFolders : [] });
+      // 이름으로 찾은 결과를 먼저 보여 준다 (바로 나온다). 파일 내용 검색은 몇 초 걸릴 수 있어, 끝나면 전체 결과로 바꾼다.
+      if (!quiet) {
+        const quick = await window.findInside.search(query, { ...options, namesOnly: true });
+        if (sequence === searchSequence && quick.items?.length) {
+          drawResult(query, quick.items, quick.total, quick, resultKey(query, quick.items, quick.total));
+          partialSequence = sequence;
+        }
+      }
+      result = await window.findInside.search(query, options);
     } catch (error) {
       failed = error;
     } finally {
@@ -463,7 +473,8 @@ async function runSearch({ quiet = false } = {}) {
       stopLoading();
     }
   }
-  if (sequence !== searchSequence) return;
+  // 더 새 검색어에 밀려 버려진 요청
+  if (sequence !== searchSequence || result.stale) return;
   const { items, total } = result;
   // 검색이 실패하면 이전 화면을 그대로 두지 않고 이유와 다시 검색 버튼을 보여 준다.
   // 체험 기간이 끝나 검색이 막히면 위의 라이선스 안내를 보여 준다
@@ -489,7 +500,8 @@ async function runSearch({ quiet = false } = {}) {
     deferredResult = { query, items, total, result, key, sequence };
     return;
   }
-  drawResult(query, items, total, result, key, { keepScroll: quiet });
+  drawResult(query, items, total, result, key, { keepScroll: quiet || partialSequence === sequence });
+  if (items.some((item) => item.fuzzy)) hintEl.textContent += " · 정확히 맞는 결과가 적어 비슷한 말(오탈자)도 함께 찾았습니다";
 }
 
 resultsEl.addEventListener("mouseleave", flushDeferredResult);
@@ -499,6 +511,9 @@ resultsEl.addEventListener("mouseleave", flushDeferredResult);
 // 오래 걸리면 이유를 짐작할 수 있게 알리고, 60초가 지나면 응답이 없다고 알린다 (늦게라도 오면 그때 그린다).
 const SEARCH_SLOW_MS = 10_000;
 const SEARCH_GIVE_UP_MS = 60_000;
+
+// 이름 결과를 먼저 그린 검색 (그 뒤로는 "파일 내용에서도 찾는 중"으로 알린다)
+let partialSequence = 0;
 
 function showLoading(sequence) {
   const started = Date.now();
@@ -520,7 +535,7 @@ function showLoading(sequence) {
       ? `${seconds}초째 응답이 없습니다. 색인 작업이 무거워 늦어질 수 있습니다. 결과가 오면 바로 보여 드립니다. 계속 안 되면 앱을 다시 켜 주세요.`
       : elapsed >= SEARCH_SLOW_MS
         ? `검색 중… ${seconds}초 — 파일 목록을 불러오는 중이거나 조건에 맞는 항목이 많으면 오래 걸릴 수 있습니다.${workText() ? ` (진행 중: ${workText()})` : ""}`
-        : `검색 중…${seconds ? ` ${seconds}초` : ""}`;
+        : `${partialSequence === sequence ? "파일 내용에서도 찾는 중…" : "검색 중…"}${seconds ? ` ${seconds}초` : ""}`;
     box.querySelector(".loadingText").textContent = text;
     timer = setTimeout(tick, 1000);
   };
@@ -1504,6 +1519,12 @@ window.findInside.onIndexProgress((progress) => {
     statusEl.textContent = [...lines, ocrStatus].join("\n");
     return;
   }
+  if (progress.phase === "catchUp") {
+    statusEl.textContent = `꺼져 있던 동안 바뀐 폴더 확인 중… ${progress.scanned.toLocaleString()}개`;
+    work.names = { scanned: progress.scanned };
+    refreshWorkHint();
+    return;
+  }
   if (progress.phase !== "content") {
     statusEl.textContent = `${progress.scanned.toLocaleString()}개 항목 확인 중…`;
     work.names = { scanned: progress.scanned };
@@ -1513,8 +1534,8 @@ window.findInside.onIndexProgress((progress) => {
   work.names = null;
   work.content = { done: progress.done, total: progress.total };
   refreshWorkHint();
-  statusEl.textContent = `${ocrStatus ? `${ocrStatus}\n` : ""}파일 내용 색인 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}
-끝난 파일부터 검색 결과에 반영됩니다.`;
+  statusEl.textContent = `${ocrStatus ? `${ocrStatus}\n` : ""}파일 내용 확인 중… ${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}
+바뀌지 않은 파일은 건너뛰고, 새 파일·바뀐 파일만 읽습니다. 끝난 파일부터 검색 결과에 반영됩니다.`;
   // 색인 중에도 검색어가 있으면 몇 초마다 결과를 새로 고쳐 새로 색인된 내용을 보여 준다.
   if (queryEl.value.trim() && !searchInFlight && Date.now() - lastProgressSearch > 5000) {
     lastProgressSearch = Date.now();

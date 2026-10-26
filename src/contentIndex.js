@@ -7,6 +7,7 @@ const { readImageSize, MAX_FILE_SIZE, IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS, EX
 const { TOKENIZER_VERSION, toTokens, toChars, textRuns, singleChar, needsScan, toMatchPhrase } = require("./tokens");
 const { displayText, findRanges, termRegex, isStrictTerm } = require("./renderer/highlight");
 const { looseText } = require("./ocrLoose");
+const { syllableVariants, wordVariants, isSyllable, LATIN_WORD } = require("./fuzzy");
 
 // 이미지 OCR 조각인지 (저장된 위치 JSON의 ocr 표시)
 const isOcrLocation = (location) => typeof location === "string" ? location.includes('"ocr":true') : Boolean(location?.ocr);
@@ -342,7 +343,8 @@ function makeSnippet(rawText, term, options = {}) {
 
 // 검색어와 일치하는 모든 파일을 찾고, 파일마다 미리보기용 조각을 최대 HITS_PER_FILE개 돌려준다.
 // 조각 수로 자르면(예: 5,000개) 조각이 많은 파일이 목록을 채워 다른 파일이 빠지므로, 먼저 id만 모두 모은다.
-function rowsForTerm(db, term) {
+// maxFiles: 파일 몇 개까지만 (오탈자 검색처럼 다 찾을 필요가 없을 때 빨리 끝내려고)
+function rowsForTerm(db, term, maxFiles = Infinity) {
   let candidates;
   const char = singleChar(term);
   if (char) {
@@ -394,8 +396,10 @@ function rowsForTerm(db, term) {
   const rows = [];
   let fileId = null;
   let taken = 0;
+  let files = 0;
   for (const candidate of candidates) {
     if (candidate.file_id !== fileId) {
+      if (taken && ++files >= maxFiles) break;
       fileId = candidate.file_id;
       taken = 0;
     }
@@ -410,28 +414,97 @@ function rowsForTerm(db, term) {
   return rows;
 }
 
+// 영문·숫자 한 글자("a", "1")는 거의 모든 문서에 들어 있어 내용 검색이 수십 초 걸리고 쓸모도 없다. 이름에서만 찾는다.
+const isTinyTerm = (term) => /^[!-~]$/.test(term);
+
+// 찾은 조각(rows)을 파일별 일치 정보에 더한다. term: 사용자가 쓴 검색어, shown: 미리보기에서 강조할 글자 (오탈자 검색이면 고친 말)
+function addRows(matches, rows, term, shown = term, fuzzy = false) {
+  for (const row of rows) {
+    let match = matches.get(row.path);
+    if (!match) {
+      match = { terms: new Set(), hits: [], chunkIds: new Set() };
+      matches.set(row.path, match);
+    }
+    match.terms.add(term);
+    if (fuzzy) (match.fuzzyTerms ||= new Set()).add(term);
+    if (match.hits.length < HITS_PER_FILE && !match.chunkIds.has(row.id)) {
+      match.chunkIds.add(row.id);
+      const snippet = makeSnippet(row.text, shown, { loose: isOcrLocation(row.location) });
+      // target: 누르면 그 위치로 가기 위한 원래 위치 (쪽·슬라이드·시트 칸·줄). marks는 화면에 필요 없어 뺀다.
+      const { marks, ...target } = resolveLocation(JSON.parse(row.location), snippet.at) || {};
+      match.hits.push({ location: describeLocation(target), target, snippet, ...(fuzzy ? { fuzzy: shown } : {}) });
+    }
+  }
+}
+
+function finishMatches(matches) {
+  for (const match of matches.values()) delete match.chunkIds;
+  return matches;
+}
+
 // 검색어별로 내용이 일치한 파일을 찾는다. 반환값: Map<경로, { terms: Set<검색어>, hits: [{ location, snippet }] }>
 function searchContent(db, terms) {
   const matches = new Map();
   for (const term of terms) {
-    for (const row of rowsForTerm(db, term)) {
-      let match = matches.get(row.path);
-      if (!match) {
-        match = { terms: new Set(), hits: [], chunkIds: new Set() };
-        matches.set(row.path, match);
-      }
-      match.terms.add(term);
-      if (match.hits.length < HITS_PER_FILE && !match.chunkIds.has(row.id)) {
-        match.chunkIds.add(row.id);
-        const snippet = makeSnippet(row.text, term, { loose: isOcrLocation(row.location) });
-        // target: 누르면 그 위치로 가기 위한 원래 위치 (쪽·슬라이드·시트 칸·줄). marks는 화면에 필요 없어 뺀다.
-        const { marks, ...target } = resolveLocation(JSON.parse(row.location), snippet.at) || {};
-        match.hits.push({ location: describeLocation(target), target, snippet });
+    if (!isTinyTerm(term)) addRows(matches, rowsForTerm(db, term), term);
+  }
+  return finishMatches(matches);
+}
+
+// ---- 오탈자 검색 ----
+// 색인에 실제로 있는 낱말(한글은 두 글자 묶음, 영문은 단어)만 고친 말 후보로 쓴다. 없는 말로 찾아 봐야 헛수고다.
+const MAX_TYPO_VARIANTS = 12;
+// 고친 말 하나로 찾는 파일 수 상한. "reprot" → "report"처럼 흔한 말이면 수천 개라 미리보기를 만드는 데만 몇 초 걸린다.
+const TYPO_FILES_PER_VARIANT = 200;
+
+function vocabLookup(db) {
+  db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS temp.fts_vocab USING fts5vocab(main, chunk_fts, row)");
+  const statement = db.prepare("SELECT doc FROM temp.fts_vocab WHERE term = ?");
+  const cache = new Map();
+  return (token) => {
+    if (!cache.has(token)) cache.set(token, statement.get(token)?.doc || 0);
+    return cache.get(token);
+  };
+}
+
+// 검색어 하나에서 한 군데만 고친 말 가운데, 색인에 있는 것을 많이 쓰인 순으로 돌려준다.
+function typoVariants(db, term, docCount = vocabLookup(db)) {
+  const runs = textRuns(term);
+  const found = [];
+  runs.forEach((run, index) => {
+    const replace = (fixed) => [...runs.slice(0, index), fixed, ...runs.slice(index + 1)].join(" ");
+    const chars = [...run];
+    if (chars.length >= 3 && chars.every(isSyllable)) {
+      // 고친 음절이 들어간 두 글자 묶음이 모두 색인에 있어야 한다
+      chars.forEach((char, at) => {
+        for (const variant of syllableVariants(char)) {
+          const left = at > 0 ? docCount(chars[at - 1] + variant) : Infinity;
+          if (!left) continue;
+          const right = at < chars.length - 1 ? docCount(variant + chars[at + 1]) : Infinity;
+          if (!right) continue;
+          const fixed = [...chars.slice(0, at), variant, ...chars.slice(at + 1)].join("");
+          found.push([Math.min(left, right), replace(fixed)]);
+        }
+      });
+    } else if (LATIN_WORD.test(run) && run.length >= 4) {
+      for (const variant of wordVariants(run)) {
+        const count = docCount(variant);
+        if (count) found.push([count, replace(variant)]);
       }
     }
+  });
+  return found.sort((a, b) => b[0] - a[0]).slice(0, MAX_TYPO_VARIANTS).map(([, variant]) => variant);
+}
+
+// 오탈자 검색: 검색어와 한 글자만 다른 말이 들어 있는 파일을 찾는다. 반환값은 searchContent와 같고 match.fuzzyTerms(고친 말로 찾은 검색어)가 붙는다.
+function searchContentFuzzy(db, terms) {
+  const matches = new Map();
+  const docCount = vocabLookup(db);
+  for (const term of terms) {
+    if (isTinyTerm(term)) continue;
+    for (const variant of typoVariants(db, term, docCount)) addRows(matches, rowsForTerm(db, variant, TYPO_FILES_PER_VARIANT), term, variant, true);
   }
-  for (const match of matches.values()) delete match.chunkIds;
-  return matches;
+  return finishMatches(matches);
 }
 
 function contentStats(db) {
@@ -439,4 +512,4 @@ function contentStats(db) {
   return Object.fromEntries(rows.map((row) => [row.status, row.count]));
 }
 
-module.exports = { openContentIndex, indexContent, searchContent, contentStats, makeSnippet, saveMail, removeMailFolder, mailEntries };
+module.exports = { openContentIndex, indexContent, searchContent, searchContentFuzzy, typoVariants, contentStats, makeSnippet, saveMail, removeMailFolder, mailEntries };

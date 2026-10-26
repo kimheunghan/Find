@@ -11,6 +11,7 @@
   const CJK = "\\p{Script=Hangul}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}";
   const RUN_PATTERN = new RegExp(`[${CJK}]+|(?:(?![${CJK}])\\p{L})+|\\p{N}+`, "gu");
   const GAP = "[^\\p{L}\\p{N}]*";
+  const CJK_RUN = new RegExp(`^[${CJK}]`, "u");
 
   function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -32,7 +33,8 @@
     if (!normalized) return null;
     if (isStrictTerm(normalized)) return new RegExp(escapeRegExp(normalized), "giu");
     const runs = normalized.match(RUN_PATTERN);
-    const source = runs ? runs.map(escapeRegExp).join(GAP) : escapeRegExp(normalized);
+    // 한글 묶음 안에는 띄어쓰기·밑줄이 하나 있어도 일치로 본다 ("설치정보" ↔ "설치 정보", "설치_정보")
+    const source = runs ? runs.map((run) => (CJK_RUN.test(run) ? [...run].map(escapeRegExp).join("[\\s_]?") : escapeRegExp(run))).join(GAP) : escapeRegExp(normalized);
     return new RegExp(source, "giu");
   }
 

@@ -64,7 +64,9 @@ test("한국어는 2글자 단위, 영문·숫자는 서로 나눈 단어 단위
   // OCR이 붙여 읽은 글자, 영문 뒤에 붙은 한글도 나눈다
   assert.deepEqual(toTokens("WEB01IP10.0.3.21"), ["web", "01", "ip", "10", "0", "3", "21"]);
   assert.deepEqual(toTokens("web서버"), ["web", "서버"]);
-  assert.equal(toMatchPhrase("서버의"), '"서버 버의"');
+  // 붙여 쓴 3글자 이상 한글은 본문에 한 군데 띄어 쓴 형태("서 버의", "서버 의")도 찾는다
+  assert.equal(toMatchPhrase("서버의"), '"서버 버의" OR "서 버의" OR "서버 의"');
+  assert.equal(toMatchPhrase("서버"), '"서버"');
   // 영문으로 끝나면 앞부분 일치, 숫자(IP 등)는 정확히
   assert.equal(toMatchPhrase("web"), '"web"*');
   assert.equal(toMatchPhrase("10.0.3.2"), '"10 0 3 2"');

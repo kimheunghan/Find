@@ -5,8 +5,9 @@
 // 파일 목록(수백 MB)도 이 worker만 들고 있어 메인 프로세스는 가볍게 뜬다.
 const fs = require("node:fs");
 const { parentPort, workerData } = require("node:worker_threads");
-const { searchEntries, tokenize, prepareEntries, updateEntries } = require("./search");
-const { openContentIndex, searchContent, mailEntries } = require("./contentIndex");
+const { searchEntries, prepareEntries, updateEntries } = require("./search");
+const { openContentIndex, mailEntries } = require("./contentIndex");
+const { catchUp } = require("./indexer");
 const { SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS } = require("./extract");
 
 const db = openContentIndex(workerData.dbPath, { migrate: false });
@@ -47,6 +48,7 @@ function load() {
     entryCount: entries.length,
     errorCount: (state.errors || []).length,
     indexedAt: state.indexedAt || null,
+    format: state.format || 1,
     roots: state.roots || [],
     excludedPaths: state.excludedPaths || [],
     targets: { documents: contentTargets("documents"), images: contentTargets("images") }
@@ -67,7 +69,7 @@ function fileTime(entry) {
 const sortTime = (item) => (item.time > Date.now() + 86_400_000 ? 0 : item.time || 0);
 const mailTime = (entry) => Date.parse(entry.date || "") || 0;
 
-parentPort.on("message", ({ id, type, query, filters }) => {
+parentPort.on("message", async ({ id, type, query, filters, contentMatches = new Map() }) => {
   try {
     if (type === "load") {
       const loaded = load();
@@ -82,14 +84,23 @@ parentPort.on("message", ({ id, type, query, filters }) => {
       parentPort.postMessage({ id, result: [...counts].map(([key, count]) => ({ key, account: key.split("	")[0], folder: key.split("	")[1], count })) });
     } else if (type === "reloadMail") {
       parentPort.postMessage({ id, result: { mailCount: reloadMails() } });
+    } else if (type === "catchUp") {
+      // 앱이 꺼져 있던 동안 바뀐 폴더만 다시 읽어 목록에 반영한다. 기다리는 동안에도 검색은 받는다.
+      const result = await catchUp(entries, query.roots, {
+        excludedPaths: query.excludedPaths,
+        onProgress: (progress) => parentPort.postMessage({ id, progress })
+      });
+      updateEntries(entries, result.added, result.removed);
+      for (const entry of result.added) fileTimes.delete(entry.path);
+      parentPort.postMessage({ id, result: { ...result, entryCount: entries.length } });
     } else if (type === "update") {
       updateEntries(entries, query.added, query.removed);
       for (const entry of query.added || []) fileTimes.delete(entry.path);
       parentPort.postMessage({ id, result: { entryCount: entries.length } });
     } else if (type === "search") {
       // 분류: pc(파일·폴더), mail(메일 계정), all(둘 다). 메일은 범위·형식 조건을 적용하지 않는다.
+      // 내용 일치(contentMatches)는 내용 검색 worker가 찾아 main이 넘겨준다 (이름 검색이 내용 검색을 기다리지 않게).
       const source = filters?.source || "all";
-      const contentMatches = searchContent(db, tokenize(query));
       const pcStats = {};
       const mailStats = {};
       const sort = filters?.sort === "newest" ? "newest" : "relevance";
@@ -97,9 +108,11 @@ parentPort.on("message", ({ id, type, query, filters }) => {
       // 메일 폴더 조건 (메일 탭에서 고른 폴더만). 폴더 키는 "계정	폴더"
       const folderKeys = new Set(filters?.mailFolders || []);
       const mailList = folderKeys.size ? mails.filter((entry) => folderKeys.has(`${entry.account}	${entry.folder}`)) : mails;
-      const mail = source === "pc" ? [] : searchEntries(mailList, query, { sort }, 200, contentMatches, mailStats, mailTime);
+      const mail = source === "pc" ? [] : searchEntries(mailList, query, { sort, fuzzy: filters?.fuzzy }, 200, contentMatches, mailStats, mailTime);
       const items = [...pc, ...mail]
-        .sort(sort === "newest" ? (a, b) => sortTime(b) - sortTime(a) || b.score - a.score : (a, b) => b.score - a.score)
+        .sort(sort === "newest"
+          ? (a, b) => Boolean(a.fuzzy) - Boolean(b.fuzzy) || sortTime(b) - sortTime(a) || b.score - a.score
+          : (a, b) => Boolean(a.fuzzy) - Boolean(b.fuzzy) || b.score - a.score)
         .slice(0, 200);
       parentPort.postMessage({ id, result: { items, total: (pcStats.total || 0) + (mailStats.total || 0), pcTotal: pcStats.total || 0, mailTotal: mailStats.total || 0 } });
     }

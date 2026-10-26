@@ -11,7 +11,8 @@ app.commandLine.appendSwitch("disable-gpu-compositing");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const fsSync = require("node:fs");
-const { indexRoots, isExcluded } = require("./indexer");
+const { indexRoots, isExcluded, isChurn } = require("./indexer");
+const { tokenize } = require("./search");
 const { Worker } = require("node:worker_threads");
 const { openContentIndex, contentStats } = require("./contentIndex");
 const { SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS, MAIL_EXTENSIONS, decodeText } = require("./extract");
@@ -262,22 +263,104 @@ function startSearchWorker() {
   worker.on("exit", (code) => {
     if (worker === searchWorker) restartSearchWorker(`종료 코드 ${code}`);
   });
-  searchWorker.on("message", ({ id, result, error }) => {
+  searchWorker.on("message", ({ id, result, error, progress }) => {
     const request = pendingRequests.get(id);
     if (!request) return;
+    if (progress) {
+      request.onProgress?.(progress);
+      return;
+    }
     pendingRequests.delete(id);
     if (error) request.reject(new Error(error));
     else request.resolve(result);
   });
 }
 
-function askSearchWorker(type, payload = {}) {
+function askSearchWorker(type, payload = {}, onProgress = null) {
   return new Promise((resolve, reject) => {
     const id = nextRequest++;
-    pendingRequests.set(id, { resolve, reject });
+    pendingRequests.set(id, { resolve, reject, onProgress });
     searchWorker.postMessage({ id, type, ...payload });
   });
 }
+
+// ---- 내용 검색 worker ----
+// 내용 DB(수 GB)를 읽는 검색은 몇 초씩 걸릴 때가 있어 이름 검색과 다른 worker에서 한다.
+// 그동안 새 검색어가 들어오면 아직 시작하지 않은 이전 요청은 버린다 (줄을 서서 차례로 다 돌면 마지막 검색이 한참 늦어진다).
+const STALE = Symbol("stale");
+let contentSearchWorker = null;
+let contentSearchBusy = false;
+let contentSearchWaiting = null;
+const contentRequests = new Map();
+
+function startContentSearchWorker() {
+  const worker = new Worker(path.join(__dirname, "contentSearchWorker.js"), { workerData: { dbPath: contentDbPath() } });
+  contentSearchWorker = worker;
+  worker.on("error", (error) => console.error("content search worker", error));
+  worker.on("exit", () => {
+    if (worker !== contentSearchWorker) return;
+    for (const request of contentRequests.values()) request.reject(new Error("내용 검색이 중단되었습니다. 잠시 뒤 다시 검색하세요."));
+    contentRequests.clear();
+    contentSearchWorker = null; // 다음 검색 때 다시 띄운다
+  });
+  worker.on("message", ({ id, result, error }) => {
+    const request = contentRequests.get(id);
+    if (!request) return;
+    contentRequests.delete(id);
+    if (error) request.reject(new Error(error));
+    else request.resolve(result);
+  });
+}
+
+// 검색어로 내용이 일치한 파일을 찾는다. 더 새 요청에 밀려 버려지면 STALE.
+function findContent(query, { fuzzy = false } = {}) {
+  const terms = tokenize(query);
+  if (!terms.length) return Promise.resolve(new Map());
+  return new Promise((resolve, reject) => {
+    contentSearchWaiting?.resolve(STALE);
+    contentSearchWaiting = { terms, fuzzy, resolve, reject };
+    pumpContentSearch();
+  });
+}
+
+function pumpContentSearch() {
+  if (contentSearchBusy || !contentSearchWaiting) return;
+  const { terms, fuzzy, resolve, reject } = contentSearchWaiting;
+  contentSearchWaiting = null;
+  contentSearchBusy = true;
+  if (!contentSearchWorker) startContentSearchWorker();
+  const id = nextRequest++;
+  new Promise((done, fail) => {
+    contentRequests.set(id, { resolve: done, reject: fail });
+    contentSearchWorker.postMessage({ id, terms, fuzzy });
+  }).then(resolve, reject).finally(() => {
+    contentSearchBusy = false;
+    pumpContentSearch();
+  });
+}
+
+// 파일 내용 일치 두 묶음(정확히·오탈자)을 합친다. 같은 파일이면 정확히 일치한 것을 앞에 둔다.
+function mergeContentMatches(exact, fuzzy) {
+  const merged = new Map(exact);
+  for (const [filePath, match] of fuzzy) {
+    const known = merged.get(filePath);
+    if (!known) {
+      merged.set(filePath, match);
+      continue;
+    }
+    const fuzzyTerms = new Set([...match.fuzzyTerms || []].filter((term) => !known.terms.has(term)));
+    merged.set(filePath, {
+      ...known,
+      terms: new Set([...known.terms, ...match.terms]),
+      hits: [...known.hits, ...match.hits].slice(0, 3),
+      ...(fuzzyTerms.size ? { fuzzyTerms } : {})
+    });
+  }
+  return merged;
+}
+
+// 정확히 일치한 결과가 이보다 적으면 오탈자 검색을 한 번 더 한다
+const FUZZY_BELOW = 30;
 
 // 색인 파일을 검색 worker가 (다시) 읽게 하고, 개수·내용 색인 대상을 받아 둔다.
 async function reloadIndex() {
@@ -314,7 +397,8 @@ function createWindow() {
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
   window.webContents.once("did-finish-load", () => {
     searchReady.then((loaded) => {
-      if (loaded.entryCount && license.status(licenseState).allowed) runIndexing(() => refreshContent(loaded.targets)).catch(() => {});
+      // 옛 형식 목록(1.0.4까지)에는 폴더 시각이 없어 첫 따라잡기 때 폴더를 모두 다시 읽고(실측 2초), 그때 시각을 적어 둔다.
+      if (loaded.entryCount && license.status(licenseState).allowed) runIndexing(() => catchUpThenContent(loaded.targets)).catch(() => {});
     });
   });
 }
@@ -786,16 +870,14 @@ function loadDelta() {
   }
 }
 
-// 감시하지 않는 곳: 캐시·임시 파일이 쉴 새 없이 바뀌는 시스템·앱 폴더와 이 앱의 데이터 폴더.
-// (C:\ 전체를 감시하면 AppData 캐시 변경이 3초마다 수천 건씩 몰려 메인 프로세스가 멈춘다)
-const WATCH_SKIP = /\\(appdata|\$recycle\.bin|system volume information|node_modules|\.git|\.cache|\.claude|\.vscode|\.gradle|temp|tmp)(\\|$)|^[a-z]:\\(windows|program files|program files \(x86\)|programdata)(\\|$)/i;
+// 감시하지 않는 곳: 캐시·임시 파일이 쉴 새 없이 바뀌는 시스템·앱 폴더(indexer.js의 isChurn — 직접 고른 검색 위치 안은 감시)와 이 앱의 데이터 폴더.
 const MAX_CHANGES_PER_FLUSH = 500;
 let deltaSaveTimer = null;
 
 function shouldWatch(target) {
   const lower = target.toLocaleLowerCase();
   if (lower.startsWith(path.resolve(app.getPath("userData")).toLocaleLowerCase())) return false;
-  return !WATCH_SKIP.test(target);
+  return !isChurn(target, settings.roots.map((root) => path.resolve(root)));
 }
 
 // 변경분 파일은 30초에 한 번만 쓴다 (변경 때마다 쓰면 메인 프로세스가 붙잡힌다).
@@ -847,6 +929,14 @@ async function flushChanges() {
     }
   }
   if (!added.length && !removed.length) return;
+  await searchReady;
+  const updated = await askSearchWorker("update", { query: { added, removed } }).catch(() => null);
+  if (updated) meta.entryCount = updated.entryCount;
+  recordChanges(added, removed);
+}
+
+// 목록에 반영한 변경을 변경분 파일에 적고, 새 문서·이미지는 내용 색인에 넣는다.
+function recordChanges(added, removed) {
   for (const entry of added) {
     delta.added.set(entry.path, entry);
     delta.removed.delete(entry.path);
@@ -856,9 +946,6 @@ async function flushChanges() {
     delta.removed.add(target);
   }
   saveDeltaLater();
-  await searchReady;
-  const updated = await askSearchWorker("update", { query: { added, removed } }).catch(() => null);
-  if (updated) meta.entryCount = updated.entryCount;
   // 내용 색인 대상(문서·이미지)은 작은 worker로 바로 처리한다. 지워진 파일은 전체 색인 때 정리된다.
   deltaQueue.push(...added.filter((entry) => entry.kind === "file" && SUPPORTED_EXTENSIONS.has(entry.extension)));
   runDeltaContent();
@@ -884,6 +971,23 @@ async function refreshContent(targets) {
   return indexSummary(await indexContentInWorker(targets));
 }
 
+// 켤 때: 꺼져 있던 동안 바뀐 폴더만 다시 읽어 목록을 따라잡은 뒤, 내용 색인을 이어서 한다 (바뀌지 않은 파일은 건너뜀).
+async function catchUpThenContent(targets) {
+  await searchReady;
+  try {
+    const result = await askSearchWorker("catchUp", { query: { roots: settings.roots, excludedPaths: settings.excludedPaths } },
+      (progress) => sendToWindow("index:progress", { ...progress, phase: "catchUp" }));
+    meta.entryCount = result.entryCount;
+    if (result.added.length || result.removed.length) {
+      recordChanges(result.added, result.removed);
+      sendToWindow("index:changed", { count: result.added.length + result.removed.length });
+    }
+  } catch (error) {
+    console.error("catch up", error);
+  }
+  return refreshContent(targets);
+}
+
 async function rebuildIndex() {
   await searchReady;
   const result = await indexRoots(settings.roots, {
@@ -904,7 +1008,18 @@ async function rebuildIndex() {
 ipcMain.handle("search:run", async (_, query, filters) => {
   requireLicense();
   await searchReady;
-  return askSearchWorker("search", { query, filters: filters || {} });
+  filters = filters || {};
+  // namesOnly: 이름만 먼저 (내용 검색을 기다리지 않아 바로 나온다). 화면이 이것을 먼저 그리고 전체 결과로 바꾼다.
+  if (filters.namesOnly) return askSearchWorker("search", { query, filters });
+  const exact = await findContent(query);
+  if (exact === STALE) return { stale: true };
+  const result = await askSearchWorker("search", { query, filters, contentMatches: exact });
+  if (result.total >= FUZZY_BELOW) return result;
+  // 정확히 일치한 것이 적으면 오탈자까지 맞춰 한 번 더 찾는다 (정확히 일치한 것 뒤에 붙는다)
+  const fuzzy = await findContent(query, { fuzzy: true });
+  if (fuzzy === STALE) return { ...result, stale: true };
+  const widened = await askSearchWorker("search", { query, filters: { ...filters, fuzzy: true }, contentMatches: mergeContentMatches(exact, fuzzy) });
+  return { ...widened, fuzzyTried: true };
 });
 ipcMain.handle("item:open", (_, targetPath) => shell.openPath(targetPath));
 ipcMain.handle("item:show", (_, targetPath) => shell.showItemInFolder(targetPath));

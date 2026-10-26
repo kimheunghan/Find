@@ -11,6 +11,8 @@ const { hangulReadings } = require("./hanja");
 const CJK = "\\p{Script=Hangul}\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}";
 const RUN_PATTERN = new RegExp(`[${CJK}]+|(?:(?![${CJK}])\\p{L})+|\\p{N}+`, "gu");
 const CJK_PATTERN = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+// 띄어 쓴 형태를 함께 찾는 한글 묶음의 최대 길이 (길면 나누는 경우가 너무 많아진다)
+const MAX_SPLIT_RUN = 12;
 
 function normalizeText(value) {
   return String(value ?? "").normalize("NFKC").toLocaleLowerCase();
@@ -64,9 +66,18 @@ function toMatchPhrase(term) {
     else joined.push(run);
   }
   if (joined.length !== runs.length) phrases.push(joined.flatMap(runTokens).join(" "));
+  // 반대로 "설치정보"로 검색하면 본문에 띄어 쓴 "설치 정보"·"보고 서"도 찾는다. 3글자 이상 한글 묶음을 한 곳에서 나눈 형태를 모두 더한다.
+  for (const [index, run] of joined.entries()) {
+    const chars = [...run];
+    if (!CJK_PATTERN.test(run) || chars.length < 3 || chars.length > MAX_SPLIT_RUN) continue;
+    for (let at = 1; at < chars.length; at += 1) {
+      const split = [...joined.slice(0, index), chars.slice(0, at).join(""), chars.slice(at).join(""), ...joined.slice(index + 1)];
+      phrases.push(split.flatMap(runTokens).join(" "));
+    }
+  }
   // 영문으로 끝나면 앞부분 일치("web" → "webserver")도 찾는다. 숫자는 IP·번호를 정확히 찾도록 앞부분 일치를 쓰지 않는다.
   const prefix = /^\p{L}/u.test(runs[runs.length - 1]) && !CJK_PATTERN.test(runs[runs.length - 1]) ? "*" : "";
-  return phrases.map((phrase) => `"${phrase}"${prefix}`).join(" OR ");
+  return [...new Set(phrases)].map((phrase) => `"${phrase}"${prefix}`).join(" OR ");
 }
 
 module.exports = { TOKENIZER_VERSION, normalizeText, textRuns, toTokens, toChars, singleChar, needsScan, toMatchPhrase };

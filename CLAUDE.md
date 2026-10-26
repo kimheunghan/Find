@@ -34,7 +34,7 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 `docs/PC-MVP.md`에 적힌 순서다. 아래 ①~④는 내가 다 할 수 있고, **사용자가 직접 할 일은 ⑤ 하나뿐이다.**
 
 1. `package.json`과 `package-lock.json`의 버전 올리기 (스토어는 버전이 같으면 새 패키지를 안 받는다)
-2. `npm test` (75개) — 그리고 `npm run check`
+2. `npm test` (88개) — 그리고 `npm run check`
 3. `npm run dist` → `release\Find_Setup_v<버전>.exe` (108MB, 홈페이지용). 같은 파일이
    `release\Find_Setup.exe`로도 복사된다 — **둘 다 필요하다**(아래 참고).
    `npm run dist:store` → `release\FindInside_Store_v<버전>.appx` (161MB, 스토어용)
@@ -89,6 +89,6 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 ## 코드
 
 - `src/main.js` 메인 프로세스·IPC, `src/preload.js` 다리, `src/renderer/` 화면
-- 색인·검색·추출은 worker로 분리되어 있다 (`*Worker.js`) — 화면이 멈추지 않게 하려는 것
+- 색인·검색·추출은 worker로 분리되어 있다 (`*Worker.js`) — 화면이 멈추지 않게 하려는 것. 이름 검색(`searchWorker.js`)과 내용 검색(`contentSearchWorker.js`)도 따로라 이름 결과가 먼저 나온다
 - 주석과 변수 이름, 사용자에게 보이는 글은 **쉬운 한국어**로 쓴다. "렌더러", "sanitize" 같은 말보다 "화면", "걸러내기"처럼 쓴다
 - 바꾼 뒤에는 `npm run check`와 `npm test`를 돌린다
