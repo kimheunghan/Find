@@ -531,11 +531,14 @@ function showLoading(sequence) {
       resultsEl.prepend(box);
     }
     const seconds = Math.floor(elapsed / 1000);
-    const text = elapsed >= SEARCH_GIVE_UP_MS
+    // 이름 결과를 이미 보여 줬으면 "목록을 불러오는 중" 같은 경고 대신 내용을 찾고 있다고만 알린다
+    const text = partialSequence === sequence
+      ? `아래는 이름으로 찾은 결과입니다. 파일 내용에서도 찾는 중…${seconds ? ` ${seconds}초` : ""}${elapsed >= SEARCH_SLOW_MS && workText() ? ` (진행 중: ${workText()})` : ""}`
+      : elapsed >= SEARCH_GIVE_UP_MS
       ? `${seconds}초째 응답이 없습니다. 색인 작업이 무거워 늦어질 수 있습니다. 결과가 오면 바로 보여 드립니다. 계속 안 되면 앱을 다시 켜 주세요.`
       : elapsed >= SEARCH_SLOW_MS
         ? `검색 중… ${seconds}초 — 파일 목록을 불러오는 중이거나 조건에 맞는 항목이 많으면 오래 걸릴 수 있습니다.${workText() ? ` (진행 중: ${workText()})` : ""}`
-        : `${partialSequence === sequence ? "파일 내용에서도 찾는 중…" : "검색 중…"}${seconds ? ` ${seconds}초` : ""}`;
+        : `검색 중…${seconds ? ` ${seconds}초` : ""}`;
     box.querySelector(".loadingText").textContent = text;
     timer = setTimeout(tick, 1000);
   };

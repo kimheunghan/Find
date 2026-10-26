@@ -76,7 +76,9 @@ function toMatchPhrase(term) {
     }
   }
   // 영문으로 끝나면 앞부분 일치("web" → "webserver")도 찾는다. 숫자는 IP·번호를 정확히 찾도록 앞부분 일치를 쓰지 않는다.
-  const prefix = /^\p{L}/u.test(runs[runs.length - 1]) && !CJK_PATTERN.test(runs[runs.length - 1]) ? "*" : "";
+  // 두 글자 이하("ai")는 그 낱말만 찾는다 — ai로 시작하는 낱말(aim, air…)까지 찾으면 엉뚱한 결과가 많고 느리다.
+  const last = runs[runs.length - 1];
+  const prefix = /^\p{L}/u.test(last) && !CJK_PATTERN.test(last) && [...last].length >= 3 ? "*" : "";
   return [...new Set(phrases)].map((phrase) => `"${phrase}"${prefix}`).join(" OR ");
 }
 

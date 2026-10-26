@@ -34,7 +34,7 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
 `docs/PC-MVP.md`에 적힌 순서다. 아래 ①~④는 내가 다 할 수 있고, **사용자가 직접 할 일은 ⑤ 하나뿐이다.**
 
 1. `package.json`과 `package-lock.json`의 버전 올리기 (스토어는 버전이 같으면 새 패키지를 안 받는다)
-2. `npm test` (88개) — 그리고 `npm run check`
+2. `npm test` (89개) — 그리고 `npm run check`
 3. `npm run dist` → `release\Find_Setup_v<버전>.exe` (108MB, 홈페이지용). 같은 파일이
    `release\Find_Setup.exe`로도 복사된다 — **둘 다 필요하다**(아래 참고).
    `npm run dist:store` → `release\FindInside_Store_v<버전>.appx` (161MB, 스토어용)

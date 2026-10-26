@@ -104,3 +104,23 @@ test("한글 두 글자 검색어는 오탈자 검색을 하지 않는다 (\"보
   assert.equal(prepareFuzzy("보고"), null);
   assert.deepEqual(searchEntries(entries, "보고", { fuzzy: true }), []);
 });
+
+test("빠른 내용 검색: 맞는 파일만 먼저 찾고, 미리보기는 고른 파일만 따로 만든다 (결과는 예전 방식과 같다)", async (t) => {
+  const { db, cleanup } = await indexTexts({ "a.txt": "AI 질의 유형 정리", "b.txt": "질의 응답", "c.txt": "air 유형", "d.txt": "IP 10.0.3.21 서버" });
+  t.after(cleanup);
+  const { contentHits } = require("../src/contentIndex");
+  const base = (map) => [...map].map(([file, match]) => [path.basename(file), [...match.terms].sort()]).sort();
+  for (const terms of [["ai", "질의", "유형"], ["10.0.3.21"], ["서버"]]) {
+    const quick = searchContent(db, terms, { hits: false });
+    assert.deepEqual(base(quick), base(searchContent(db, terms)), terms.join(" "));
+    const hits = contentHits(db, [...quick.keys()], terms);
+    for (const [file, match] of searchContent(db, terms)) {
+      const expected = match.hits.map((hit) => hit.snippet.match);
+      // 본문 확인이 필요한 검색어(IP 등)는 빠른 검색 때 이미 미리보기가 있다
+      const got = quick.get(file).hits.length ? quick.get(file).hits : hits.get(file) || [];
+      assert.deepEqual(got.map((hit) => hit.snippet.match), expected, `${terms.join(" ")} ${path.basename(file)}`);
+    }
+  }
+  // 두 글자 영문은 그 낱말만 ("ai"가 "air"에 걸리지 않는다)
+  assert.deepEqual([...searchContent(db, ["ai"], { hits: false }).keys()].map((file) => path.basename(file)), ["a.txt"]);
+});

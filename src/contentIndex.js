@@ -414,6 +414,109 @@ function rowsForTerm(db, term, maxFiles = Infinity) {
   return rows;
 }
 
+// ---- 빠른 내용 검색 ----
+// 검색어와 맞는 조각 번호는 FTS 색인에서 0.1초 안에 나온다. 느린 것은 조각마다 본문(수 GB) 속 행을 읽어
+// 어느 파일인지 알아내고 미리보기를 만드는 일이었다 (맞는 파일이 수천 개면 5~20초).
+// 그래서 (1) 조각 번호 → 파일을 메모리의 표로 바꾸고, (2) 미리보기는 화면에 보일 파일만 따로 만든다(contentHits).
+// 한 파일의 조각은 한 번에 저장되어 번호가 이어져 있으므로(실측: 3만9천 파일 모두) 파일마다 [처음, 끝] 구간만 기억한다.
+const lookups = new WeakMap();
+// 표를 만든 뒤 새로 저장된 조각을 하나씩 찾은 수가 이보다 많으면 다음 검색 때 표를 다시 만든다
+const REBUILD_AFTER_UNKNOWN = 2000;
+
+function contentLookup(db) {
+  let lookup = lookups.get(db);
+  if (!lookup || lookup.unknown > REBUILD_AFTER_UNKNOWN) {
+    lookup = buildLookup(db);
+    lookups.set(db, lookup);
+  }
+  return lookup;
+}
+
+function buildLookup(db) {
+  const rows = db.prepare("SELECT file_id, MIN(id) AS lo, MAX(id) AS hi FROM chunks GROUP BY file_id ORDER BY lo").all();
+  const lo = Float64Array.from(rows, (row) => row.lo);
+  const hi = Float64Array.from(rows, (row) => row.hi);
+  const file = Float64Array.from(rows, (row) => row.file_id);
+  const extra = new Map(); // 표에 없는 조각 (표를 만든 뒤 저장된 것)
+  const paths = new Map(db.prepare("SELECT id, path FROM files").all().map((row) => [row.id, row.path]));
+  const fileOfChunk = db.prepare("SELECT file_id FROM chunks WHERE id = ?");
+  const pathOfFile = db.prepare("SELECT path FROM files WHERE id = ?");
+  const lookup = {
+    unknown: 0,
+    fileOf(id) {
+      let low = 0;
+      let high = lo.length - 1;
+      while (low <= high) {
+        const middle = (low + high) >> 1;
+        if (lo[middle] > id) high = middle - 1;
+        else if (hi[middle] < id) low = middle + 1;
+        else return file[middle];
+      }
+      if (!extra.has(id)) {
+        extra.set(id, fileOfChunk.get(id)?.file_id ?? null);
+        lookup.unknown += 1;
+      }
+      return extra.get(id);
+    },
+    pathOf(fileId) {
+      if (!paths.has(fileId)) paths.set(fileId, pathOfFile.get(fileId)?.path ?? null);
+      return paths.get(fileId);
+    }
+  };
+  return lookup;
+}
+
+// 본문을 열어 확인할 필요 없이 색인만으로 맞는지 알 수 있는 검색어 (한 글자·한 글자 묶음·문장부호가 든 검색어는 본문 확인이 필요)
+const isPlainTerm = (term) => !singleChar(term) && !needsScan(term) && !isStrictTerm(term);
+
+// 검색어와 맞는 조각 번호. 미리보기를 만들 때 다시 쓰도록 잠시 기억해 둔다 (1분, 최근 검색어 16개)
+const candidateCache = new WeakMap();
+const CANDIDATE_TTL = 60_000;
+
+function candidateIds(db, term, { fresh = false } = {}) {
+  let cache = candidateCache.get(db);
+  if (!cache) candidateCache.set(db, cache = new Map());
+  const saved = cache.get(term);
+  if (!fresh && saved && Date.now() - saved.at < CANDIDATE_TTL) return saved.ids;
+  const phrase = toMatchPhrase(term);
+  // 이미지 OCR 조각은 헷갈리는 모음을 같게 본 느슨한 색인으로도 찾는다 (전경애 ↔ 전경에·전경어)
+  const ids = new Set(phrase ? db.prepare(
+    "SELECT rowid AS id FROM chunk_fts WHERE chunk_fts MATCH ? UNION SELECT rowid FROM chunk_loose WHERE chunk_loose MATCH ?"
+  ).all(phrase, toMatchPhrase(looseText(term)) || phrase).map((row) => row.id) : []);
+  cache.delete(term);
+  cache.set(term, { ids, at: Date.now() });
+  while (cache.size > 16) cache.delete(cache.keys().next().value);
+  return ids;
+}
+
+// 화면에 보일 파일들의 미리보기(일치한 곳)를 만든다. 반환값: Map<경로, hits>
+// searchContent(db, terms, { hits: false })로 찾은 파일에 쓴다. 본문 확인이 필요한 검색어는 그때 이미 미리보기가 있다.
+function contentHits(db, paths, terms) {
+  const fileOfPath = db.prepare("SELECT id FROM files WHERE path = ?");
+  const chunksOfFile = db.prepare("SELECT id FROM chunks WHERE file_id = ? ORDER BY id");
+  const readChunk = db.prepare("SELECT id, location, text FROM chunks WHERE id = ?");
+  const plain = terms.filter((term) => !isTinyTerm(term) && isPlainTerm(term));
+  const matches = new Map();
+  for (const filePath of paths) {
+    const fileId = fileOfPath.get(filePath)?.id;
+    if (fileId === undefined) continue;
+    const ids = chunksOfFile.all(fileId).map((row) => row.id);
+    for (const term of plain) {
+      const candidates = candidateIds(db, term);
+      const rows = [];
+      for (const id of ids) {
+        if (rows.length >= HITS_PER_FILE) break;
+        if (!candidates.has(id)) continue;
+        const row = readChunk.get(id);
+        if (row) rows.push({ ...row, path: filePath });
+      }
+      addRows(matches, rows, term);
+    }
+  }
+  finishMatches(matches);
+  return new Map([...matches].map(([filePath, match]) => [filePath, match.hits]));
+}
+
 // 영문·숫자 한 글자("a", "1")는 거의 모든 문서에 들어 있어 내용 검색이 수십 초 걸리고 쓸모도 없다. 이름에서만 찾는다.
 const isTinyTerm = (term) => /^[!-~]$/.test(term);
 
@@ -443,10 +546,28 @@ function finishMatches(matches) {
 }
 
 // 검색어별로 내용이 일치한 파일을 찾는다. 반환값: Map<경로, { terms: Set<검색어>, hits: [{ location, snippet }] }>
-function searchContent(db, terms) {
+// options.hits가 false이면 어느 파일이 맞는지만 빨리 찾고, 미리보기는 비워 둔다 (contentHits로 화면에 보일 것만 만든다).
+function searchContent(db, terms, options = {}) {
   const matches = new Map();
+  const quick = options.hits === false;
   for (const term of terms) {
-    if (!isTinyTerm(term)) addRows(matches, rowsForTerm(db, term), term);
+    if (isTinyTerm(term)) continue;
+    if (!quick || !isPlainTerm(term)) {
+      addRows(matches, rowsForTerm(db, term), term);
+      continue;
+    }
+    const lookup = contentLookup(db);
+    const seen = new Set();
+    for (const id of candidateIds(db, term, { fresh: true })) {
+      const fileId = lookup.fileOf(id);
+      if (fileId === null || seen.has(fileId)) continue;
+      seen.add(fileId);
+      const filePath = lookup.pathOf(fileId);
+      if (!filePath) continue;
+      let match = matches.get(filePath);
+      if (!match) matches.set(filePath, match = { terms: new Set(), hits: [], chunkIds: new Set() });
+      match.terms.add(term);
+    }
   }
   return finishMatches(matches);
 }
@@ -512,4 +633,4 @@ function contentStats(db) {
   return Object.fromEntries(rows.map((row) => [row.status, row.count]));
 }
 
-module.exports = { openContentIndex, indexContent, searchContent, searchContentFuzzy, typoVariants, contentStats, makeSnippet, saveMail, removeMailFolder, mailEntries };
+module.exports = { openContentIndex, indexContent, searchContent, contentHits, contentLookup, searchContentFuzzy, typoVariants, contentStats, makeSnippet, saveMail, removeMailFolder, mailEntries };

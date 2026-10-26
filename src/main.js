@@ -290,7 +290,7 @@ function askSearchWorker(type, payload = {}, onProgress = null) {
 const STALE = Symbol("stale");
 let contentSearchWorker = null;
 let contentSearchBusy = false;
-let contentSearchWaiting = null;
+const contentQueue = []; // 차례를 기다리는 요청 { message, droppable, resolve, reject }
 const contentRequests = new Map();
 
 function startContentSearchWorker() {
@@ -312,31 +312,49 @@ function startContentSearchWorker() {
   });
 }
 
-// 검색어로 내용이 일치한 파일을 찾는다. 더 새 요청에 밀려 버려지면 STALE.
-function findContent(query, { fuzzy = false } = {}) {
-  const terms = tokenize(query);
-  if (!terms.length) return Promise.resolve(new Map());
+// 내용 검색 worker에 요청한다. droppable: 더 새 검색어가 오면 아직 시작 안 한 이 요청은 버리고 STALE을 돌려준다.
+function askContent(message, { droppable = false } = {}) {
   return new Promise((resolve, reject) => {
-    contentSearchWaiting?.resolve(STALE);
-    contentSearchWaiting = { terms, fuzzy, resolve, reject };
+    if (droppable) {
+      for (const waiting of contentQueue.filter((item) => item.droppable)) {
+        contentQueue.splice(contentQueue.indexOf(waiting), 1);
+        waiting.resolve(STALE);
+      }
+    }
+    contentQueue.push({ message, droppable, resolve, reject });
     pumpContentSearch();
   });
 }
 
+// 검색어로 내용이 일치한 파일을 찾는다 (미리보기 없이). 더 새 요청에 밀려 버려지면 STALE.
+function findContent(query, { fuzzy = false } = {}) {
+  const terms = tokenize(query);
+  if (!terms.length) return Promise.resolve(new Map());
+  return askContent({ type: "match", terms, fuzzy }, { droppable: true });
+}
+
 function pumpContentSearch() {
-  if (contentSearchBusy || !contentSearchWaiting) return;
-  const { terms, fuzzy, resolve, reject } = contentSearchWaiting;
-  contentSearchWaiting = null;
+  if (contentSearchBusy || !contentQueue.length) return;
+  const { message, resolve, reject } = contentQueue.shift();
   contentSearchBusy = true;
   if (!contentSearchWorker) startContentSearchWorker();
   const id = nextRequest++;
   new Promise((done, fail) => {
     contentRequests.set(id, { resolve: done, reject: fail });
-    contentSearchWorker.postMessage({ id, terms, fuzzy });
+    contentSearchWorker.postMessage({ id, ...message });
   }).then(resolve, reject).finally(() => {
     contentSearchBusy = false;
     pumpContentSearch();
   });
+}
+
+// 화면에 보일 결과 가운데 내용이 일치했는데 미리보기가 아직 없는 것만 미리보기를 만들어 붙인다
+async function attachHits(result, query) {
+  const items = (result.items || []).filter((item) => item.matchedIn?.includes("content") && !item.hits?.length);
+  if (!items.length) return result;
+  const hits = await askContent({ type: "hits", terms: tokenize(query), paths: items.map((item) => item.path) }).catch(() => new Map());
+  for (const item of items) item.hits = hits.get(item.path) || [];
+  return result;
 }
 
 // 파일 내용 일치 두 묶음(정확히·오탈자)을 합친다. 같은 파일이면 정확히 일치한 것을 앞에 둔다.
@@ -417,6 +435,8 @@ app.whenReady().then(async () => {
     }
     loadDelta();
     watchRoots();
+    // 내용 검색 준비(조각 → 파일 표, 3~5초)를 미리 해 두어 첫 검색이 기다리지 않게 한다
+    askContent({ type: "warm" }).catch(() => {});
     // 메일 계정: 시작하고 조금 뒤, 그 뒤로 15분마다 새 메일을 가져온다
     setTimeout(() => syncMail().catch(() => {}), 20_000);
     setInterval(() => syncMail().catch(() => {}), 15 * 60_000);
@@ -1013,12 +1033,12 @@ ipcMain.handle("search:run", async (_, query, filters) => {
   if (filters.namesOnly) return askSearchWorker("search", { query, filters });
   const exact = await findContent(query);
   if (exact === STALE) return { stale: true };
-  const result = await askSearchWorker("search", { query, filters, contentMatches: exact });
+  const result = await attachHits(await askSearchWorker("search", { query, filters, contentMatches: exact }), query);
   if (result.total >= FUZZY_BELOW) return result;
   // 정확히 일치한 것이 적으면 오탈자까지 맞춰 한 번 더 찾는다 (정확히 일치한 것 뒤에 붙는다)
   const fuzzy = await findContent(query, { fuzzy: true });
   if (fuzzy === STALE) return { ...result, stale: true };
-  const widened = await askSearchWorker("search", { query, filters: { ...filters, fuzzy: true }, contentMatches: mergeContentMatches(exact, fuzzy) });
+  const widened = await attachHits(await askSearchWorker("search", { query, filters: { ...filters, fuzzy: true }, contentMatches: mergeContentMatches(exact, fuzzy) }), query);
   return { ...widened, fuzzyTried: true };
 });
 ipcMain.handle("item:open", (_, targetPath) => shell.openPath(targetPath));
