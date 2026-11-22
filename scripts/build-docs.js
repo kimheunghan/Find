@@ -19,7 +19,13 @@ const need = (value, label) => {
 };
 
 const email = need(product.supportEmail, "supportEmail (문의 이메일)");
-const checkout = need(product.lemonSqueezy.checkoutUrl, "lemonSqueezy.checkoutUrl (구매 링크)");
+// 판매 페이지의 구매 단추는 모두 우리 구매 페이지(buy.html)로 간다. 그 페이지가 Paddle 결제 창을 띄우고,
+// Paddle 실제 환경 값(product.paddle.live)이 비어 있는 동안에는 Lemon Squeezy 결제로 넘긴다.
+const lemonCheckout = need(product.lemonSqueezy.checkoutUrl, "lemonSqueezy.checkoutUrl (Paddle 실제 판매 전까지 쓰는 구매 링크)");
+const checkout = "buy.html";
+need(product.paddle?.sandbox?.priceId, "paddle.sandbox (Paddle 시험 결제 값)");
+// 스크립트 안에 넣는 JSON: </script>로 끝나지 않게 < 를 바꿔 둔다
+const scriptJson = (value) => JSON.stringify(value ?? null).replace(/</g, "\\u003c");
 // 설치 파일 이름에는 버전이 붙는다 (Find_Setup_v1.0.3.exe). 버전은 package.json에서 가져와
 // ${version} 자리에 끼우므로, 새 버전을 낼 때 판매 페이지를 손으로 고칠 일이 없다.
 const { version } = require("../package.json");
@@ -48,7 +54,9 @@ const values = {
   DOWNLOAD_LINK: download ? escape(download) : "#",
   SETUP_FILE: escape(setupFile),
   CHECKOUT_LINK: checkout ? escape(checkout) : "#pricing",
-  CHECKOUT_TARGET: checkout ? newTab : ""
+  CHECKOUT_TARGET: checkout ? newTab : "",
+  PADDLE_JSON: scriptJson(product.paddle),
+  LS_CHECKOUT_JSON: scriptJson(lemonCheckout)
 };
 const fill = (text) => text.replace(/\{\{([A-Z_]+)\}\}/g, (all, key) => {
   if (!(key in values)) throw new Error(`알 수 없는 값: ${all}`);
@@ -105,6 +113,7 @@ for (const name of ["terms.html", "privacy.html"]) {
 }
 for (const out of [legalOut, siteOut]) fs.copyFileSync(path.join(root, "legal", "legal.css"), path.join(out, "legal.css"));
 write(path.join(siteOut, "index.html"), fill(fs.readFileSync(path.join(root, "web", "index.html"), "utf8")));
+write(path.join(siteOut, "buy.html"), fill(fs.readFileSync(path.join(root, "web", "buy.html"), "utf8")));
 fs.copyFileSync(path.join(root, "web", "site.css"), path.join(siteOut, "site.css"));
 // favicon.ico: 없으면 Netlify가 자기 기본 아이콘을 내줘서 구글 검색 결과에 Netlify 로고가 나온다
 for (const icon of ["icon.png", "icon-48.png", "icon-96.png", "icon-192.png", "favicon.ico"]) fs.copyFileSync(path.join(root, "web", icon), path.join(siteOut, icon));

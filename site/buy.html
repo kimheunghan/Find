@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FindInside 구매</title>
+<!-- 결제 페이지는 검색 결과에 나오지 않게 한다 -->
+<meta name="robots" content="noindex" />
+<link rel="icon" type="image/png" sizes="48x48" href="icon-48.png" />
+<link rel="stylesheet" href="site.css" />
+<style>
+  .buy { padding: 48px 0 80px; }
+  .notice { max-width: 440px; margin: 0 auto 16px; padding: 10px 14px; border-radius: 10px; background: #fff4d6; color: #6b4a00; font-size: 14px; }
+  .done { display: none; }
+  .card p { margin: 0 0 12px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="/"><img src="icon.png" alt="" width="30" height="30" /> FindInside</a>
+  </div>
+</header>
+
+<main class="buy wrap">
+  <p id="testNotice" class="notice" hidden>시험 결제 화면입니다. 실제로 돈이 나가지 않으며, 받은 키는 시험 서버에서만 쓸 수 있습니다.</p>
+  <div class="card">
+    <div id="ready">
+      <h1 style="margin:0;font-size:22px">FindInside 라이선스 (PC 2대)</h1>
+      <p class="price">₩29,000</p>
+      <ul>
+        <li>한 번 결제, 1.x 업데이트 무료</li>
+        <li>키 하나로 PC 2대까지 등록</li>
+        <li>구매 후 14일 안에 요청하면 전액 환불</li>
+      </ul>
+      <button id="open" class="button primary" type="button" style="width:100%;border:0;cursor:pointer;font-size:16px">결제하기</button>
+      <p id="message" class="small" style="margin-top:12px"></p>
+    </div>
+    <div id="done" class="done">
+      <h1 style="margin:0 0 12px;font-size:22px">결제가 끝났습니다</h1>
+      <p>라이선스 키를 결제할 때 입력한 메일 주소로 보냈습니다. 몇 분 안에 오지 않으면 스팸함을 확인해 주십시오.</p>
+      <p>FindInside 메뉴에서 <strong>라이선스</strong>를 열고 키를 붙여 넣으면 됩니다.</p>
+    </div>
+    <p class="small">결제·세금 처리·영수증 발행은 판매 대행사 Paddle(Paddle.com Market Limited)이 판매자(Merchant of Record)로서 맡습니다.
+      <a href="terms.html">이용약관</a> · <a href="privacy.html">개인정보처리방침</a> · 문의: <a href="mailto:hung6789@naver.com">hung6789@naver.com</a></p>
+  </div>
+</main>
+
+<script>
+// 결제 창 설정은 src/product.json의 paddle 값에서 온다 (npm run docs).
+// - 주소에 ?test=1이 있으면 Paddle 시험 환경(sandbox)으로 연다.
+// - 실제 환경 값이 비어 있으면(Paddle 실제 판매 시작 전) 지금 쓰는 Lemon Squeezy 결제로 넘긴다.
+const PADDLE = {"sandbox":{"clientToken":"test_6888469b75c9ecdde652ea62ca4","priceId":"pri_01m80etg52ssx88fxh1jxx0rts"},"live":{"clientToken":"","priceId":""}};
+const FALLBACK = "https://findinside.lemonsqueezy.com/checkout/buy/6f7dd9c7-6555-468b-a9ac-6f8e60a54c6e";
+const test = new URLSearchParams(location.search).has("test");
+const config = test ? PADDLE.sandbox : PADDLE.live;
+
+if (!config || !config.clientToken || !config.priceId) {
+  if (FALLBACK) location.replace(FALLBACK);
+} else {
+  document.getElementById("testNotice").hidden = !test;
+  const message = document.getElementById("message");
+  const script = document.createElement("script");
+  script.src = "https://cdn.paddle.com/paddle/v2/paddle.js";
+  script.onerror = () => { message.textContent = "결제 창을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로 고침해 주십시오."; };
+  script.onload = () => {
+    if (test) Paddle.Environment.set("sandbox");
+    Paddle.Initialize({
+      token: config.clientToken,
+      eventCallback(event) {
+        if (event.name === "checkout.completed") {
+          document.getElementById("ready").style.display = "none";
+          document.getElementById("done").style.display = "block";
+        }
+      }
+    });
+    const open = () => Paddle.Checkout.open({
+      items: [{ priceId: config.priceId, quantity: 1 }],
+      // 라이선스 서버가 이 값과 가격 ID로 FindInside 결제를 알아보고 FIND- 키를 만든다
+      customData: { product: "findinside" },
+      settings: { displayMode: "overlay", locale: "ko", theme: "light" }
+    });
+    document.getElementById("open").addEventListener("click", open);
+    open();
+  };
+  document.head.appendChild(script);
+}
+</script>
+</body>
+</html>
