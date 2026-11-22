@@ -1,16 +1,27 @@
 "use strict";
 
 // 라이선스: 처음 실행한 날부터 체험 기간(product.json trialDays) 동안 모든 기능을 쓰고,
-// 그 뒤에는 Lemon Squeezy에서 산 라이선스 키로 이 PC를 활성화해야 검색·색인·메일 가져오기를 할 수 있다.
-// - 키 확인은 Lemon Squeezy License API(api.lemonsqueezy.com/v1/licenses)로 한다. API 키가 필요 없는 공개 API다.
+// 그 뒤에는 산 라이선스 키로 이 PC를 등록해야 검색·색인·메일 가져오기를 할 수 있다.
+// - 키 등록·해제·확인은 우리 라이선스 서버(우리의 족보와 같이 쓰는 서버, 기본 jocbo.pages.dev)에 묻는다.
+//   Lemon Squeezy 시절에 산 키(XXXXXXXX-XXXX-…)도 서버가 Lemon Squeezy에 확인한 뒤 이어받으므로 앱은 우리 서버에만 묻는다.
+//   새로 파는 키는 FIND-XXXX-XXXX-XXXX-XXXX 모양이고, 키 하나로 PC 2대까지 등록한다.
+// - 서버 주소는 환경 변수 FINDINSIDE_LICENSE_SERVER로 바꿀 수 있다 (시험: https://preview.jocbo.pages.dev).
 // - 서버에 보내는 것은 라이선스 키와 이 설치를 구분하는 임의의 이름뿐이다 (PC 이름·사용자 이름은 보내지 않음).
 // - 인터넷이 없어도 쓸 수 있게 마지막 확인 후 offlineGraceDays까지는 그대로 쓴다.
-// 이 파일은 상태 계산과 API 호출만 한다. 저장(암호화)은 main.js가 한다.
+// 이 파일은 상태 계산과 서버 호출만 한다. 저장(암호화)은 main.js가 한다.
 const crypto = require("node:crypto");
 const product = require("./product.json");
+const { version } = require("../package.json");
 
 const DAY = 86_400_000;
-const API = "https://api.lemonsqueezy.com/v1/licenses";
+const PRODUCT = "findinside";
+const OFFLINE_MESSAGE = "라이선스 서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주십시오.";
+// Cloudflare가 기본 User-Agent를 막는 경우가 있어 직접 넣는다
+const USER_AGENT = `findinside-desktop/${version}`;
+
+function serverUrl(config = product) {
+  return String(process.env.FINDINSIDE_LICENSE_SERVER || config.licenseServer || "https://jocbo.pages.dev").replace(/\/+$/, "");
+}
 
 function newState(now = Date.now()) {
   return { firstRun: now, lastSeen: now, installId: crypto.randomUUID() };
@@ -28,6 +39,7 @@ function status(state, now = Date.now(), config = product) {
   if (state.license?.instanceId) {
     const checkedAt = state.license.validatedAt || state.license.activatedAt || 0;
     const offlineDays = Math.floor((clock - checkedAt) / DAY);
+    // customerName 등은 Lemon Squeezy 시절에 등록한 PC에만 저장되어 있다
     const base = { customer: state.license.customerName || state.license.customerEmail || "", keyHint: hint(state.license.key), variant: state.license.variantName || "" };
     if (offlineDays > config.offlineGraceDays) return { kind: "offline", allowed: false, ...base, offlineDays };
     return { kind: "licensed", allowed: true, ...base, needsCheck: offlineDays >= config.revalidateDays };
@@ -39,98 +51,84 @@ function status(state, now = Date.now(), config = product) {
 
 const hint = (key) => (key ? `…${String(key).slice(-4)}` : "");
 
-async function call(action, params, fetchImpl = fetch) {
+// 서버에 JSON으로 묻는다. 연결이 안 되면 offline 표시가 붙은 오류를 던진다.
+async function call(action, payload, { fetchImpl = fetch, config = product } = {}) {
   let response;
   try {
-    response = await fetchImpl(`${API}/${action}`, {
+    response = await fetchImpl(`${serverUrl(config)}/api/license/${action}`, {
       method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(params).toString(),
+      headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": USER_AGENT },
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(20_000)
     });
   } catch (error) {
-    const offline = new Error("라이선스 서버에 연결하지 못했습니다. 인터넷 연결을 확인하세요.");
+    const offline = new Error(OFFLINE_MESSAGE);
     offline.offline = true;
     offline.cause = error;
     throw offline;
   }
   let body = {};
   try {
-    body = await response.json();
+    body = (await response.json()) || {};
   } catch {
     // 본문이 JSON이 아니면 아래에서 상태 코드로 판단한다
   }
   return { ok: response.ok, status: response.status, body };
 }
 
-// Lemon Squeezy 오류 문구를 한국어 안내로
-function friendly(error) {
-  const text = String(error || "");
-  if (/not found/i.test(text)) return "라이선스 키를 찾을 수 없습니다. 구매 메일에 있는 키를 그대로 붙여 넣으세요.";
-  if (/activation limit/i.test(text)) return "이 키로 활성화할 수 있는 PC 수를 모두 썼습니다. 다른 PC의 FindInside에서 '이 PC에서 해제'를 누른 뒤 다시 시도하세요.";
-  if (/expired/i.test(text)) return "기간이 끝난 라이선스 키입니다.";
-  if (/disabled/i.test(text)) return "사용이 중지된 라이선스 키입니다. 판매자에게 문의하세요.";
-  return text || "라이선스 키를 확인하지 못했습니다.";
-}
-
-// 산 제품의 키인지 확인한다 (같은 Lemon Squeezy의 다른 가게·다른 제품 키를 막음). 설정하지 않았으면 건너뛴다.
-// productId는 번호 하나 또는 여러 개: 테스트 모드 상품과 실제 판매(Live) 상품은 번호가 달라 둘 다 받는다.
-function checkProduct(meta, config) {
-  const { storeId, productId } = config.lemonSqueezy || {};
-  if (storeId && Number(meta?.store_id) !== Number(storeId)) return false;
-  const productIds = [productId].flat().filter(Boolean).map(Number);
-  if (productIds.length && !productIds.includes(Number(meta?.product_id))) return false;
-  return true;
+// 실패하면 서버가 보낸 한국어 안내(detail)를 그대로 보여 준다
+function failure({ status: httpStatus, body }, fallback = "라이선스 키를 확인하지 못했습니다.") {
+  const detail = typeof body?.detail === "string" ? body.detail : "";
+  const error = new Error(detail || (httpStatus >= 500 ? "라이선스 서버에 문제가 있습니다. 잠시 뒤 다시 시도해 주십시오." : fallback));
+  error.status = httpStatus;
+  return error;
 }
 
 async function activate(state, key, { fetchImpl, now = Date.now(), config = product } = {}) {
   const licenseKey = String(key || "").trim();
-  if (!licenseKey) throw new Error("라이선스 키를 입력하세요.");
-  const { body } = await call("activate", { license_key: licenseKey, instance_name: `FindInside ${state.installId.slice(0, 8)}` }, fetchImpl);
-  if (!body.activated || !body.instance?.id) throw new Error(friendly(body.error));
-  if (!checkProduct(body.meta, config)) {
-    // 다른 제품의 키로 자리를 차지하지 않게 바로 해제한다
-    await call("deactivate", { license_key: licenseKey, instance_id: body.instance.id }, fetchImpl).catch(() => {});
+  if (!licenseKey) throw new Error("라이선스 키를 입력해 주십시오.");
+  const result = await call("activate", { key: licenseKey, name: `FindInside ${state.installId.slice(0, 8)}`, product: PRODUCT }, { fetchImpl, config });
+  const { body } = result;
+  if (!result.ok || !body.activated || !body.instance) throw failure(result);
+  if (body.product !== PRODUCT) {
+    // 다른 프로그램의 키로 자리를 차지하지 않게 바로 해제한다
+    await call("deactivate", { key: licenseKey, instance: body.instance }, { fetchImpl, config }).catch(() => {});
     throw new Error("FindInside 라이선스 키가 아닙니다.");
   }
   return {
     ...state,
-    license: {
-      key: licenseKey,
-      instanceId: body.instance.id,
-      activatedAt: now,
-      validatedAt: now,
-      customerName: body.meta?.customer_name || "",
-      customerEmail: body.meta?.customer_email || "",
-      variantName: body.meta?.variant_name || ""
-    }
+    license: { key: licenseKey, instanceId: String(body.instance), activatedAt: now, validatedAt: now }
   };
 }
 
-// 주기적으로 키가 아직 유효한지 확인한다. 연결이 안 되면 상태를 그대로 둔다 (offlineGraceDays까지는 계속 사용).
-// 서버가 무효라고 답하면(환불·중지·해제) 라이선스를 지운다.
-async function validate(state, { fetchImpl, now = Date.now() } = {}) {
+// 주기적으로 키가 아직 유효한지 확인한다. 연결이 안 되거나 서버가 분명히 답하지 않으면 상태를 그대로 둔다
+// (offlineGraceDays까지는 계속 사용). 서버가 valid: false라고 답하면(환불·해제·다른 프로그램의 키) 라이선스를 지운다.
+// 저장된 instanceId는 Lemon Squeezy 시절 값이어도 그대로 보낸다 — 서버가 알아서 처리한다.
+async function validate(state, { fetchImpl, now = Date.now(), config = product } = {}) {
   if (!state.license?.instanceId) return { state, changed: false };
   let result;
   try {
-    result = await call("validate", { license_key: state.license.key, instance_id: state.license.instanceId }, fetchImpl);
+    result = await call("validate", { key: state.license.key, instance: state.license.instanceId, product: PRODUCT }, { fetchImpl, config });
   } catch (error) {
     if (error.offline) return { state, changed: false, offline: true };
     throw error;
   }
   const { body, status: httpStatus } = result;
-  if (body.valid) return { state: { ...state, license: { ...state.license, validatedAt: now } }, changed: true };
-  if (httpStatus >= 500 || httpStatus === 429) return { state, changed: false, offline: true };
+  if (body.valid === true) return { state: { ...state, license: { ...state.license, validatedAt: now } }, changed: true };
+  // 서버 오류·요청 제한·답이 이상할 때(확인 기능이 아직 없는 서버 등)는 끊긴 것으로 본다
+  if (body.valid !== false || httpStatus >= 500 || httpStatus === 429) return { state, changed: false, offline: true };
   const { license, ...rest } = state;
-  return { state: { ...rest, revoked: { at: now, reason: friendly(body.error || body.license_key?.status) } }, changed: true, revoked: true };
+  const reason = typeof body.detail === "string" && body.detail ? body.detail : "라이선스가 더 이상 유효하지 않습니다.";
+  return { state: { ...rest, revoked: { at: now, reason } }, changed: true, revoked: true };
 }
 
-async function deactivate(state, { fetchImpl } = {}) {
+async function deactivate(state, { fetchImpl, config = product } = {}) {
   if (!state.license?.instanceId) return state;
-  const { body } = await call("deactivate", { license_key: state.license.key, instance_id: state.license.instanceId }, fetchImpl);
-  if (!body.deactivated && !/not found/i.test(String(body.error || ""))) throw new Error(friendly(body.error));
+  const result = await call("deactivate", { key: state.license.key, instance: state.license.instanceId }, { fetchImpl, config });
+  // 서버에 이미 없는 키·자리(404)면 이 PC에서만 지운다
+  if (!(result.ok && result.body.deactivated) && result.status !== 404) throw failure(result, "등록을 해제하지 못했습니다.");
   const { license, ...rest } = state;
   return rest;
 }
 
-module.exports = { newState, touch, status, activate, validate, deactivate, friendly, DAY };
+module.exports = { newState, touch, status, activate, validate, deactivate, serverUrl, DAY, OFFLINE_MESSAGE, USER_AGENT };

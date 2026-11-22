@@ -123,7 +123,7 @@ function aboutText() {
   ].filter(Boolean).join("\n");
 }
 
-// ---- 라이선스 (체험 기간 · Lemon Squeezy 키) ----
+// ---- 라이선스 (체험 기간 · 우리 라이선스 서버에 등록한 키) ----
 // 상태는 Windows DPAPI(safeStorage)로 암호화해 두 곳(Roaming·Local)에 저장한다.
 // 한쪽을 지워도 다른 쪽의 첫 실행일을 쓰므로 파일 하나를 지워 체험 기간을 다시 받을 수 없다.
 const license = require("./license");
@@ -191,7 +191,7 @@ function licenseInfo() {
     ...license.status(licenseState),
     revoked: licenseState.revoked?.reason || "",
     trialDays: product.trialDays,
-    canBuy: Boolean(product.lemonSqueezy.checkoutUrl),
+    canBuy: Boolean(product.checkoutUrl),
     supportEmail: product.supportEmail,
     website: product.website
   };
@@ -221,7 +221,8 @@ ipcMain.handle("license:check", async () => {
   await checkLicenseOnline();
   return licenseInfo();
 });
-ipcMain.handle("license:buy", () => product.lemonSqueezy.checkoutUrl && shell.openExternal(product.lemonSqueezy.checkoutUrl));
+// 앱의 [구매하기]는 우리 서버의 결제 안내 페이지로 간다 (판매 페이지의 구매 링크는 product.lemonSqueezy.checkoutUrl)
+ipcMain.handle("license:buy", () => product.checkoutUrl && shell.openExternal(product.checkoutUrl));
 
 // 이용약관·개인정보처리방침·오픈소스 라이선스 (앱에 함께 들어 있는 문서)
 const LEGAL_DOCS = { terms: "terms.html", privacy: "privacy.html", notices: "THIRD-PARTY-NOTICES.txt" };

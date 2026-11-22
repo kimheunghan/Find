@@ -27,8 +27,7 @@ const setupFile = `Find_Setup_v${version}.exe`;
 const download = need(product.downloadUrl, "downloadUrl (체험판 내려받기 링크)").replace(/\$\{version\}/g, version);
 need(product.price, "price (가격)");
 need(product.website, "website (판매 페이지 주소)");
-need(product.lemonSqueezy.storeId, "lemonSqueezy.storeId (다른 가게 키 막기)");
-need(product.lemonSqueezy.productId, "lemonSqueezy.productId (다른 제품 키 막기)");
+need(product.licenseServer, "licenseServer (라이선스 서버 주소)");
 
 // 구매·스토어 링크는 새 탭에서 연다 (판매 페이지를 닫지 않고 결제하도록, 족보 사이트와 같게)
 const newTab = ` target="_blank" rel="noopener"`;
