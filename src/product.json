@@ -14,8 +14,8 @@
   "licenseServer": "https://jocbo.pages.dev",
   "checkoutUrl": "https://findinside.netlify.app/buy",
   "paddle": {
-    "sandbox": { "clientToken": "test_6888469b75c9ecdde652ea62ca4", "priceId": "pri_01m80etg52ssx88fxh1jxx0rts" },
-    "live": { "clientToken": "", "priceId": "" }
+    "sandbox": { "clientToken": "test_6888469b75c9ecdde652ea62ca4", "priceId": "pri_01m80etg52ssx88fxh1jxx0rts", "licenseServer": "https://preview.jocbo.pages.dev" },
+    "live": { "clientToken": "", "priceId": "", "licenseServer": "https://jocbo.pages.dev" }
   },
   "lemonSqueezy": {
     "checkoutUrl": "https://findinside.lemonsqueezy.com/checkout/buy/6f7dd9c7-6555-468b-a9ac-6f8e60a54c6e"

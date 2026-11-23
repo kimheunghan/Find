@@ -38,7 +38,12 @@
     </div>
     <div id="done" class="done">
       <h1 style="margin:0 0 12px;font-size:22px">결제가 끝났습니다</h1>
-      <p>라이선스 키를 결제할 때 입력한 메일 주소로 보냈습니다. 몇 분 안에 오지 않으면 스팸함을 확인해 주십시오.</p>
+      <div id="keyBox" hidden>
+        <p>라이선스 키</p>
+        <p><code id="keyText" style="display:block;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:17px;font-weight:700;word-break:break-all;user-select:all"></code></p>
+        <button id="copyKey" class="button ghost" type="button" style="width:100%;cursor:pointer;color:inherit;border-color:var(--line);background:none;font-size:15px">키 복사</button>
+      </div>
+      <p id="keyStatus">라이선스 키를 받는 중입니다…</p>
       <p>FindInside 메뉴에서 <strong>라이선스</strong>를 열고 키를 붙여 넣으면 됩니다.</p>
     </div>
     <p class="small">결제·세금 처리·영수증 발행은 판매 대행사 Paddle(Paddle.com Market Limited)이 판매자(Merchant of Record)로서 맡습니다.
@@ -71,6 +76,7 @@ if (!config || !config.clientToken || !config.priceId) {
         if (event.name === "checkout.completed") {
           document.getElementById("ready").style.display = "none";
           document.getElementById("done").style.display = "block";
+          showKey(event.data && event.data.transaction_id);
         }
       }
     });
@@ -84,6 +90,39 @@ if (!config || !config.clientToken || !config.priceId) {
     open();
   };
   document.head.appendChild(script);
+}
+
+// 결제가 끝나면 라이선스 서버에 거래 번호로 키를 물어 화면에 바로 보여 준다 (메일이 늦거나 스팸함에 들어가도 되게).
+// 서버가 아직 처리 중이면(202) 2.5초마다 10번까지 다시 묻는다. 끝내 못 받으면 메일 안내만 남긴다.
+async function showKey(txn) {
+  const status = document.getElementById("keyStatus");
+  const mailOnly = "라이선스 키를 결제할 때 입력한 메일 주소로 보냈습니다. 몇 분 안에 오지 않으면 스팸함을 확인해 주십시오.";
+  if (!txn || !config.licenseServer) { status.textContent = mailOnly; return; }
+  for (let i = 0; i < 10; i++) {
+    try {
+      const response = await fetch(`${config.licenseServer}/api/license/order?txn=${encodeURIComponent(txn)}`);
+      if (response.status === 200) {
+        const order = await response.json();
+        const keys = (order.keys || []).filter((item) => item.product === "findinside").map((item) => item.key);
+        if (keys.length) {
+          document.getElementById("keyText").textContent = keys.join("\n");
+          document.getElementById("keyBox").hidden = false;
+          document.getElementById("copyKey").onclick = async (e) => {
+            try { await navigator.clipboard.writeText(keys.join("\n")); e.target.textContent = "복사했습니다"; } catch { e.target.textContent = "키를 직접 선택해 복사해 주십시오"; }
+          };
+          status.textContent = order.mailed && order.email ? `같은 키를 ${order.email}로도 보냈습니다.` : mailOnly;
+          try { Paddle.Checkout.close(); } catch {}
+          return;
+        }
+      } else if (response.status !== 202) {
+        break;
+      }
+    } catch {
+      // 연결이 잠깐 안 되면 다시 묻는다
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+  }
+  status.textContent = mailOnly;
 }
 </script>
 </body>
