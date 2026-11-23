@@ -44,7 +44,8 @@ const values = {
   REFUND_DAYS: product.refundDays,
   ACTIVATION_LIMIT: product.activationLimit,
   PRICE: escape(product.price || "가격 준비 중"),
-  CONTACT: email ? `문의: <a href="mailto:${escape(email)}">${escape(email)}</a>` : "문의: 준비 중",
+  SUPPORT_LINK: email ? `<a href="mailto:${escape(email)}">${escape(email)}</a>` : "문의처",
+  CONTACT: email ?`문의: <a href="mailto:${escape(email)}">${escape(email)}</a>` : "문의: 준비 중",
   BUY_BUTTON: checkout ? `<a class="button primary" href="${escape(checkout)}"${newTab}>구매하기</a>` : "",
   BUY_BUTTON_GHOST: checkout ? `<a class="button ghost" href="${escape(checkout)}"${newTab}>구매하기 ₩${escape(String(product.price || "").replace(/^₩/, ""))}</a>` : "",
   // 체험판은 Microsoft Store가 기본 (스토어가 서명해 Windows·백신 경고가 없다). 설치 파일 직접 받기는 보조 링크
@@ -114,6 +115,8 @@ for (const name of ["terms.html", "privacy.html"]) {
 for (const out of [legalOut, siteOut]) fs.copyFileSync(path.join(root, "legal", "legal.css"), path.join(out, "legal.css"));
 write(path.join(siteOut, "index.html"), fill(fs.readFileSync(path.join(root, "web", "index.html"), "utf8")));
 write(path.join(siteOut, "buy.html"), fill(fs.readFileSync(path.join(root, "web", "buy.html"), "utf8")));
+// 키 다시 받기 (라이선스 키 안내 메일의 링크가 가리키는 곳)
+write(path.join(siteOut, "license.html"), fill(fs.readFileSync(path.join(root, "web", "license.html"), "utf8")));
 fs.copyFileSync(path.join(root, "web", "site.css"), path.join(siteOut, "site.css"));
 // favicon.ico: 없으면 Netlify가 자기 기본 아이콘을 내줘서 구글 검색 결과에 Netlify 로고가 나온다
 for (const icon of ["icon.png", "icon-48.png", "icon-96.png", "icon-192.png", "favicon.ico"]) fs.copyFileSync(path.join(root, "web", icon), path.join(siteOut, icon));
