@@ -22,7 +22,10 @@ const email = need(product.supportEmail, "supportEmail (문의 이메일)");
 // 판매 페이지의 구매 단추는 모두 우리 구매 페이지(buy.html)로 간다. 그 페이지가 Paddle 결제 창을 띄우고,
 // Paddle 실제 환경 값(product.paddle.live)이 비어 있는 동안에는 Lemon Squeezy 결제로 넘긴다.
 const lemonCheckout = need(product.lemonSqueezy.checkoutUrl, "lemonSqueezy.checkoutUrl (Paddle 실제 판매 전까지 쓰는 구매 링크)");
-const checkout = "buy.html";
+// Paddle 실제 값이 비어 있는 동안은 구매 단추가 Lemon Squeezy로 바로 간다 (buy.html을 한 번 거치는 시간을 줄이려고).
+// 실제 값을 채우고 npm run docs를 돌리면 저절로 buy.html로 바뀐다. 앱과 안내 페이지는 늘 buy.html로 가고, buy.html이 바로 넘긴다.
+const paddleLive = Boolean(product.paddle?.live?.clientToken && product.paddle?.live?.priceId);
+const checkout = paddleLive ? "buy.html" : lemonCheckout;
 need(product.paddle?.sandbox?.priceId, "paddle.sandbox (Paddle 시험 결제 값)");
 // 스크립트 안에 넣는 JSON: </script>로 끝나지 않게 < 를 바꿔 둔다
 const scriptJson = (value) => JSON.stringify(value ?? null).replace(/</g, "\\u003c");

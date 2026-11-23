@@ -6,6 +6,18 @@
 <title>FindInside 구매</title>
 <!-- 결제 페이지는 검색 결과에 나오지 않게 한다 -->
 <meta name="robots" content="noindex" />
+<script>
+// 결제 창 설정은 src/product.json의 paddle 값에서 온다 (npm run docs).
+// - 주소에 ?test=1이 있으면 Paddle 시험 환경(sandbox)으로 연다.
+// - 실제 환경 값이 비어 있으면(Paddle 실제 판매 시작 전) 지금 쓰는 Lemon Squeezy 결제로 넘긴다.
+//   디자인 파일을 받기 전에 바로 넘기려고 <head> 맨 위에 둔다 (맨 아래에 두면 페이지가 다 뜬 뒤에야 넘어가 느렸다).
+const PADDLE = {{PADDLE_JSON}};
+const FALLBACK = {{LS_CHECKOUT_JSON}};
+const test = new URLSearchParams(location.search).has("test");
+const config = test ? PADDLE.sandbox : PADDLE.live;
+const usePaddle = Boolean(config && config.clientToken && config.priceId);
+if (!usePaddle && FALLBACK) location.replace(FALLBACK);
+</script>
 <link rel="icon" type="image/png" sizes="48x48" href="icon-48.png" />
 <link rel="stylesheet" href="site.css" />
 <style>
@@ -72,17 +84,8 @@
 </main>
 
 <script>
-// 결제 창 설정은 src/product.json의 paddle 값에서 온다 (npm run docs).
-// - 주소에 ?test=1이 있으면 Paddle 시험 환경(sandbox)으로 연다.
-// - 실제 환경 값이 비어 있으면(Paddle 실제 판매 시작 전) 지금 쓰는 Lemon Squeezy 결제로 넘긴다.
-const PADDLE = {{PADDLE_JSON}};
-const FALLBACK = {{LS_CHECKOUT_JSON}};
-const test = new URLSearchParams(location.search).has("test");
-const config = test ? PADDLE.sandbox : PADDLE.live;
-
-if (!config || !config.clientToken || !config.priceId) {
-  if (FALLBACK) location.replace(FALLBACK);
-} else {
+// PADDLE·config·usePaddle은 <head> 맨 위 스크립트에서 정한다. Lemon Squeezy로 넘길 때는 여기까지 오지 않는다.
+if (usePaddle) {
   document.getElementById("testNotice").hidden = !test;
   const message = document.getElementById("message");
   const script = document.createElement("script");
