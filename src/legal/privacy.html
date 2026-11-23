@@ -10,18 +10,20 @@
 <body>
 <main>
 <h1>FindInside 개인정보처리방침</h1>
-<p class="meta">시행일: 2026-10-01</p>
+<p class="meta">시행일: 2026-10-01 · 개정: 2026-11-30</p>
+<p class="meta">운영: 흥한소프트(K Software), 대표 김흥한(Kim Heunghan)</p>
 
 <p class="lead">FindInside는 사용자의 파일, 문서, 이미지, 메일, 검색어를 개발자나 다른 곳으로 보내지 않습니다. 색인과 검색은 모두 사용자 PC 안에서 이루어집니다.</p>
 
-<h2>1. 개발자가 수집하는 정보</h2>
-<p>프로그램 사용 중 개발자가 받는 정보는 없습니다. 사용 통계, 광고, 오류 자동 전송 기능이 없습니다.</p>
-<p>구매할 때에는 판매 대행사 Lemon Squeezy가 결제에 필요한 정보(이름, 이메일, 결제 수단, 청구 국가 등)를 처리합니다. 이 정보는 <a href="https://www.lemonsqueezy.com/privacy">Lemon Squeezy 개인정보처리방침</a>에 따라 처리되며, 개발자는 판매 관리 화면에서 주문 내역(구매자 이름·이메일·주문 번호)을 볼 수 있습니다. 개발자는 이를 라이선스 확인, 환불, 문의 응대에만 씁니다.</p>
+<h2>1. 개발자가 받는 정보</h2>
+<p>프로그램 사용 중 개발자가 받는 정보는 라이선스 확인에 필요한 것(아래 2번 표)뿐입니다. 사용 통계, 광고, 오류 자동 전송 기능이 없습니다.</p>
+<p>결제는 결제 화면에 표시된 판매 대행자(Merchant of Record)인 Paddle.com 또는 Lemon Squeezy가 처리합니다. 결제에 필요한 정보(이름, 이메일, 결제 수단, 청구 국가 등)는 판매 대행자가 받으며 각자의 개인정보처리방침(<a href="https://www.paddle.com/legal/privacy">Paddle</a>, <a href="https://www.lemonsqueezy.com/privacy">Lemon Squeezy</a>)을 따릅니다. 카드 번호 등 결제 정보는 개발자에게 전달되지 않습니다.</p>
+<p>Paddle.com으로 결제한 경우, 결제가 끝나면 개발자의 라이선스 서버가 판매 대행자에게서 구매자 이메일, 이름, 주문 번호를 받아 라이선스 키와 함께 보관하고, 개발자의 Gmail 계정(Google)으로 키 안내 메일을 보냅니다. Lemon Squeezy로 결제한 경우에는 개발자가 Lemon Squeezy 판매 관리 화면에서 같은 주문 내역을 봅니다. 이 정보는 라이선스 확인, 키 다시 보내기, 환불, 문의 응대에만 씁니다.</p>
 
 <h2>2. 인터넷으로 보내는 정보</h2>
 <table>
 <tr><th>받는 곳</th><th>언제</th><th>보내는 정보</th></tr>
-<tr><td>Lemon Squeezy 라이선스 서버<br />(api.lemonsqueezy.com)</td><td>라이선스 키를 입력할 때, 이후 약 7일마다, "이 PC에서 해제"를 누를 때</td><td>라이선스 키, 이 설치를 구분하는 임의의 이름(예: "FindInside 1a2b3c4d"). PC 이름·사용자 이름·파일 정보는 보내지 않습니다.</td></tr>
+<tr><td>라이선스 서버 — 개발자의 라이선스 서버(jocbo.pages.dev, Cloudflare) 또는 Lemon Squeezy(api.lemonsqueezy.com). 프로그램 판에 따라 다릅니다.</td><td>라이선스 키를 입력할 때, 이후 약 7일마다, "이 PC에서 해제"를 누를 때</td><td>라이선스 키, 이 설치를 구분하는 임의의 이름(예: "FindInside 1a2b3c4d"). PC 이름·사용자 이름·파일 정보는 보내지 않습니다.</td></tr>
 <tr><td>사용자가 직접 등록한 메일 서버<br />(IMAP·POP3)</td><td>메일 계정을 연결하거나 새 메일을 가져올 때(약 15분마다), 메일을 열 때</td><td>사용자가 입력한 아이디와 비밀번호(앱 비밀번호). 메일 서버에서 메일을 받아 오기만 하고, 메일을 지우거나 보내지 않습니다.</td></tr>
 </table>
 <p>인터넷 통신에서는 기술적으로 사용자의 IP 주소가 상대 서버에 전달됩니다.</p>
@@ -36,24 +38,39 @@
 <p>메일 원문은 저장하지 않고, 검색에 필요한 글자와 제목·보낸 사람·날짜 같은 목록 정보만 저장합니다. 메일을 열 때 메일 서버에서 다시 받습니다.</p>
 
 <h2>4. 제3자 제공과 처리 위탁</h2>
-<p>개발자는 사용자의 정보를 제3자에게 제공하지 않습니다. 결제와 라이선스 발급은 Lemon Squeezy(미국)가 처리합니다(국외 이전: 구매할 때 구매자가 Lemon Squeezy에 직접 입력하는 정보).</p>
+<p>개발자는 사용자의 정보를 제3자에게 제공하지 않습니다. 다음 업체가 개발자를 대신해 일부를 처리합니다(국외 이전 포함).</p>
+<ul>
+<li>Paddle.com Market Limited(영국), Lemon Squeezy, LLC(미국): 결제, 세금, 영수증, 환불 — 구매할 때 구매자가 직접 입력하는 정보</li>
+<li>Cloudflare, Inc.(미국): 라이선스 서버 운영 — 라이선스 키, 설치 이름, 구매자 이메일·이름·주문 번호</li>
+<li>Google LLC(미국, Gmail): 라이선스 키 안내 메일 발송 — 구매자 이메일, 이름, 라이선스 키</li>
+</ul>
 
 <h2>5. 보관 기간과 삭제</h2>
 <ul>
 <li>PC에 저장한 정보는 사용자가 지울 때까지 남습니다. 프로그램에서 메일 계정을 삭제하면 그 계정의 색인과 비밀번호도 지웁니다.</li>
 <li>모두 지우려면 프로그램을 제거한 뒤 위 표의 폴더를 삭제하세요.</li>
-<li>주문 정보는 관련 법령(전자상거래법 등)이 정한 기간 동안 Lemon Squeezy가 보관합니다. 삭제를 원하면 아래 문의처로 요청하세요.</li>
+<li>라이선스 서버의 정보는 라이선스가 유효한 동안 보관합니다. "이 PC에서 해제"를 누르면 그 PC의 등록 기록을 지웁니다.</li>
+<li>주문 정보는 관련 법령(전자상거래법 등)이 정한 기간 동안 판매 대행자가 보관합니다. 삭제를 원하면 아래 문의처로 요청하세요.</li>
 </ul>
 
 <h2>6. 사용자의 권리</h2>
-<p>사용자는 개발자가 가진 자신의 주문 정보에 대해 열람, 정정, 삭제, 처리 정지를 요청할 수 있습니다. 아래 문의처로 요청하면 지체 없이 처리합니다.</p>
+<p>사용자는 개발자가 가진 자신의 주문·라이선스 정보에 대해 열람, 정정, 삭제, 처리 정지를 요청할 수 있습니다. 아래 문의처로 요청하면 지체 없이 처리합니다.</p>
 
 <h2>7. 개인정보 보호책임자와 문의</h2>
-<p>개인정보 보호책임자: kimheunghan<br />문의: <a href="mailto:hung6789@naver.com">hung6789@naver.com</a></p>
+<p>개인정보 보호책임자: 김흥한(흥한소프트)<br />문의: <a href="mailto:hung6789@naver.com">hung6789@naver.com</a></p>
 <p>개인정보 침해 신고·상담: 개인정보침해신고센터(privacy.kisa.or.kr, 국번 없이 118), 개인정보분쟁조정위원회(kopico.go.kr, 1833-6972)</p>
 
 <h2>8. 변경</h2>
-<p>이 방침을 바꾸면 시행일 7일 전부터 판매 페이지에 알립니다.</p>
+<p>이 방침을 바꾸면 시행일 7일 전부터 판매 페이지에 알립니다. 관련 문서: <a href="terms.html">이용약관</a> · <a href="refund.html">환불 정책</a></p>
+
+<h2 lang="en">Privacy Policy (English summary)</h2>
+<div lang="en">
+<p>Effective 2026-10-01 · Revised 2026-11-30. Operated by 흥한소프트 (K Software), Kim Heunghan.</p>
+<p>FindInside indexes and searches files, documents, images and mail only on the user's own PC. We never receive file contents, mail, search terms or usage data, and the program sends no telemetry.</p>
+<p>License activation, a check about every 7 days and deactivation send the license key and a random installation name (for example "FindInside 1a2b3c4d") to our license server at jocbo.pages.dev (Cloudflare) or to Lemon Squeezy, depending on the program version. Connecting a mail account sends the user's login only to the mail server the user entered.</p>
+<p>Payments are handled by the Merchant of Record shown on the checkout, Paddle.com or Lemon Squeezy; we never receive card details. After a purchase through Paddle.com our license server keeps the buyer's email, name and order number with the license key, and sends the key by email from our Gmail account (Google). We use this only for license checks, key resends, refunds and support, and keep it while the license is valid. Ask us to see, correct or delete it at any time.</p>
+<p>See also our <a href="terms.html">Terms of Service</a> and <a href="refund.html">Refund Policy</a>. Contact: <a href="mailto:hung6789@naver.com">hung6789@naver.com</a></p>
+</div>
 </main>
 </body>
 </html>

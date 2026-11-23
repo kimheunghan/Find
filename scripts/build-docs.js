@@ -40,6 +40,7 @@ const newTab = ` target="_blank" rel="noopener"`;
 const values = {
   OWNER: escape(product.owner),
   EFFECTIVE_DATE: escape(product.effectiveDate),
+  REVISED_DATE: escape(product.revisedDate || product.effectiveDate),
   TRIAL_DAYS: product.trialDays,
   REFUND_DAYS: product.refundDays,
   ACTIVATION_LIMIT: product.activationLimit,
@@ -107,7 +108,8 @@ function write(target, text) {
 
 const legalOut = path.join(root, "src", "legal");
 const siteOut = path.join(root, "site");
-for (const name of ["terms.html", "privacy.html"]) {
+// 환불 정책(refund.html)은 Paddle 심사에 필요해 따로 둔다 (2026-11-23)
+for (const name of ["terms.html", "privacy.html", "refund.html"]) {
   const html = fill(fs.readFileSync(path.join(root, "legal", name), "utf8"));
   write(path.join(legalOut, name), html);
   write(path.join(siteOut, name), html);
