@@ -48,6 +48,9 @@ PowerShell에서 npm을 쓸 때는 먼저 `$env:Path = "C:\Program Files\nodejs;
    그리고 **`npm run release:readme`** — findinside-download README의 설치 파일 버전("최신 x.y.z", `Find_Setup_vx.y.z.exe` 링크)을
    `package.json` 버전으로 맞춘다 (최신 릴리스 태그가 그 버전이 아니면 멈춘다). **설치 파일 버전이 바뀌면 보이는 곳 모두 새 버전이어야 한다**:
    판매 페이지 두 곳은 `npm run docs`, README는 이 명령, 받은 파일 이름은 함수가 알아서 맞춘다.
+   마지막으로 **`npm run release:latest -- "바뀐 점 한두 줄"`** → `site/latest.json`(판 번호·설치 파일 주소·SHA-256)을 만들고 커밋·푸시한다.
+   손님 설치 파일판이 이 파일을 보고 새 판을 알린다(자동 업데이트, `src/updater.js`). **릴리스를 올린 뒤에만** 만든다 —
+   스크립트가 최신 릴리스 태그와 올린 파일 크기를 확인하고, 다르면 멈춘다.
 5. **(사용자)** Partner Center에 `release\FindInside_Store_v<버전>.appx`를 새 제출로 올린다. 브라우저 작업이라 내가 못 한다.
 
 ### 설치 파일을 두 이름으로 올리는 이유 — 빠뜨리지 말 것

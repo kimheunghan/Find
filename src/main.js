@@ -1,6 +1,6 @@
 "use strict";
 
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, net, safeStorage, shell } = require("electron");
 const os = require("node:os");
 const crypto = require("node:crypto");
 
@@ -445,11 +445,78 @@ app.whenReady().then(async () => {
   });
   Menu.setApplicationMenu(null);
   createWindow();
+  // 새 판 확인: 켜는 속도에 영향이 없게 조금 뒤에 한다
+  setTimeout(() => checkForUpdate().catch(() => {}), 10_000);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+// ---- 자동 업데이트 (설치 파일판·개인용만. Store판은 Store가 한다) ----
+// 하루에 한 번 홈페이지에 최신 판을 묻고, 더 새 판이면 [지금 업데이트] [나중에]를 묻는다.
+// 인터넷이 안 되거나 받기에 실패하면 아무 말 없이 지금 판을 쓴다. 설정·색인·라이선스는 설치 폴더 밖(%APPDATA%)이라 그대로 남는다.
+const updater = require("./updater");
+
+async function checkForUpdate() {
+  const kind = updater.installKind({ isPackaged: app.isPackaged, windowsStore: process.windowsStore, exePath: process.execPath, productName: app.getName() });
+  if (!kind) return;
+  const tempDir = path.join(app.getPath("temp"), "FindInside-update");
+  // 지난번 업데이트 때 받아 둔 설치 파일은 지운다
+  await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+
+  const stateFile = path.join(app.getPath("userData"), "update-check.json");
+  const today = updater.localDay();
+  const state = (await updater.readJson(stateFile)) || {};
+  if (state.lastChecked === today) return;
+  const { infoUrl, allowed } = updater.sources();
+  const info = await updater.fetchInfo({ fetch: net.fetch, infoUrl, allowed });
+  if (!info) return; // 못 물었으면 다음에 켤 때 다시 묻는다
+  await fs.writeFile(stateFile, JSON.stringify({ lastChecked: today }), "utf8").catch(() => {});
+  if (updater.compareVersions(info.version, app.getVersion()) <= 0) return;
+  // 개인용은 이 PC의 소스 폴더에서 다시 만든다. 소스가 아직 새 판이 아니면 다시 만들어도 같은 판이라 묻지 않는다.
+  let mark = null;
+  if (kind === "personal") {
+    mark = await updater.readJson(path.join(path.dirname(process.execPath), updater.PERSONAL_MARK));
+    const source = mark?.source && (await updater.readJson(path.join(mark.source, "package.json")));
+    if (!mark?.node || !source?.version || updater.compareVersions(source.version, app.getVersion()) <= 0) return;
+  }
+  if (!window || window.isDestroyed()) return;
+
+  const { response } = await dialog.showMessageBox(window, {
+    type: "info",
+    title: "FindInside 업데이트",
+    message: `새 버전(${info.version})이 출시되었습니다.`,
+    detail: [
+      info.notes ? `변경 사항: ${info.notes}` : "",
+      `현재 버전: ${app.getVersion()}`,
+      "[지금 업데이트]를 선택하면 새 버전을 내려받아 설치한 후 FindInside를 다시 실행합니다. 설정, 색인, 라이선스 정보는 그대로 유지됩니다."
+    ].filter(Boolean).join("\n\n"),
+    buttons: ["지금 업데이트", "나중에"],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true
+  });
+  if (response !== 0) return; // [나중에]: 다음 날 다시 묻는다
+
+  if (kind === "personal") {
+    updater.runPersonalUpdate({ mark, exe: process.execPath, pid: process.pid, tempDir });
+    app.quit();
+    return;
+  }
+
+  const file = await updater.download({
+    fetch: net.fetch,
+    info,
+    dir: tempDir,
+    allowed,
+    onProgress: (ratio) => { if (window && !window.isDestroyed()) window.setProgressBar(ratio); }
+  });
+  if (window && !window.isDestroyed()) window.setProgressBar(-1);
+  if (!file) return; // 받기 실패·확인값 다름: 깔지 않고 지금 판을 쓴다
+  updater.runInstaller(file);
+  app.quit();
+}
 
 // 앱이 끝나면 한글 도우미가 숨겨 둔 한글을 닫게 한다
 app.on("before-quit", stopHwp);

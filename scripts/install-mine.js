@@ -35,6 +35,8 @@ fs.writeFileSync(licenseFile, text.replace(before, `${before}\n  return { kind: 
 fs.rmSync(target, { recursive: true, force: true });
 fs.cpSync(built, target, { recursive: true });
 fs.rmSync(path.join(root, output), { recursive: true, force: true });
+// 개인용 표시: 앱이 이 파일을 보고 개인용인 줄 안다. 새 판이 나오면 이 소스 폴더에서 이 스크립트를 다시 돌려 업데이트한다 (src/updater.js)
+fs.writeFileSync(path.join(target, "personal-install.json"), JSON.stringify({ source: root, node: process.execPath }, null, 2));
 
 // 바탕화면 바로 가기
 const exe = path.join(target, "FindInside.exe");
