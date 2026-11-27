@@ -24,6 +24,7 @@
 <table>
 <tr><th>받는 곳</th><th>언제</th><th>보내는 정보</th></tr>
 <tr><td>라이선스 서버 — 개발자의 라이선스 서버(jocbo.pages.dev, Cloudflare) 또는 Lemon Squeezy(api.lemonsqueezy.com). 프로그램 판에 따라 다릅니다.</td><td>라이선스 키를 입력할 때, 이후 약 7일마다, "이 PC에서 해제"를 누를 때</td><td>라이선스 키, 이 설치를 구분하는 임의의 이름(예: "FindInside 1a2b3c4d"). PC 이름·사용자 이름·파일 정보는 보내지 않습니다.</td></tr>
+<tr><td>업데이트 확인 — FindInside 홈페이지(findinside.netlify.app, findinside.pages.dev)<br />(홈페이지의 설치 파일로 설치한 1.0.7 이상만. Microsoft Store판은 Store가 업데이트합니다.)</td><td>프로그램을 실행한 날 하루 한 번, 사용자가 [지금 업데이트]를 선택할 때</td><td>최신 버전 정보 요청과 설치 파일 내려받기 요청뿐입니다. 라이선스 키·PC 정보·파일 정보는 보내지 않습니다.</td></tr>
 <tr><td>사용자가 직접 등록한 메일 서버<br />(IMAP·POP3)</td><td>메일 계정을 연결하거나 새 메일을 가져올 때(약 15분마다), 메일을 열 때</td><td>사용자가 입력한 아이디와 비밀번호(앱 비밀번호). 메일 서버에서 메일을 받아 오기만 하고, 메일을 지우거나 보내지 않습니다.</td></tr>
 </table>
 <p>인터넷 통신에서는 기술적으로 사용자의 IP 주소가 상대 서버에 전달됩니다.</p>
@@ -42,6 +43,7 @@
 <ul>
 <li>Paddle.com Market Limited(영국), Lemon Squeezy, LLC(미국): 결제, 세금, 영수증, 환불 — 구매할 때 구매자가 직접 입력하는 정보</li>
 <li>Cloudflare, Inc.(미국): 라이선스 서버 운영 — 라이선스 키, 설치 이름, 구매자 이메일·이름·주문 번호</li>
+<li>Netlify, Inc.(미국), Cloudflare, Inc.(미국): 홈페이지와 업데이트 확인 파일 제공 — 접속 시 전달되는 IP 주소</li>
 <li>Google LLC(미국, Gmail): 라이선스 키 안내 메일 발송 — 구매자 이메일, 이름, 라이선스 키</li>
 </ul>
 
@@ -67,7 +69,7 @@
 <div lang="en">
 <p>Effective {{EFFECTIVE_DATE}} · Revised {{REVISED_DATE}}. Operated by 흥한소프트 (K Software), Kim Heunghan.</p>
 <p>FindInside indexes and searches files, documents, images and mail only on the user's own PC. We never receive file contents, mail, search terms or usage data, and the program sends no telemetry.</p>
-<p>License activation, a check about every 7 days and deactivation send the license key and a random installation name (for example "FindInside 1a2b3c4d") to our license server at jocbo.pages.dev (Cloudflare) or to Lemon Squeezy, depending on the program version. Connecting a mail account sends the user's login only to the mail server the user entered.</p>
+<p>License activation, a check about every 7 days and deactivation send the license key and a random installation name (for example "FindInside 1a2b3c4d") to our license server at jocbo.pages.dev (Cloudflare) or to Lemon Squeezy, depending on the program version. Version 1.0.7 and later installed from our website check our website (findinside.netlify.app) once a day for a newer version; this request carries no license key, PC or file information. Connecting a mail account sends the user's login only to the mail server the user entered.</p>
 <p>Payments are handled by the Merchant of Record shown on the checkout, Paddle.com or Lemon Squeezy; we never receive card details. After a purchase through Paddle.com our license server keeps the buyer's email, name and order number with the license key, and sends the key by email from our Gmail account (Google). We use this only for license checks, key resends, refunds and support, and keep it while the license is valid. Ask us to see, correct or delete it at any time.</p>
 <p>See also our <a href="terms.html">Terms of Service</a> and <a href="refund.html">Refund Policy</a>. Contact: {{SUPPORT_LINK}}</p>
 </div>
